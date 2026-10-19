@@ -3,8 +3,23 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
-## Unreleased
+## 0.27.1
 
+- **A program can now depend on m31git together with tui 0.9 or later.** m31 allows one
+  source per dependency name across a whole build, and m31git pinned tui v0.8.0
+  while the m3 editor (and anything else on tui 0.9.1 or later) pins a newer one, so the
+  two could not be built together and downgrading the consumer did not compile. The
+  pin below is the whole fix for that: m31git builds and passes against tui v0.11.0,
+  and its `syntax` pin is the commit tui v0.11.0 uses, so both names resolve to one
+  source. A consumer's `deps` names `tui` at v0.9.1 or later (v0.11.0 is what m31git is
+  tested with), `syntax` at `e49e01c` and m31git at this version.
+  Checked by compiling m3dit 0.11.0's `m3.m31` with `deps` naming tui v0.11.0, syntax
+  `e49e01c` and this m31git.
+- **For programs that use m31git as a library:** `GIT_index.Error` has three new
+  variants (`RequiredExtension`, `Locked`, `Changed`), and `match` has no default, so a
+  `match` over it has to handle them (m3dit's `ui/MED_gitlib.m31` has two, each needs
+  three empty cases). `GIT_index.Index` has a new field `base` and `GIT_index.Entry`
+  one (`ext_flags`), both with defaults, so the constructors keep their arguments.
 - **tui is pinned to v0.11.0** (`e156723`, was v0.8.0, `57a63af`); `syntax` stays at
   `e49e01c`, the commit tui v0.11.0 itself pins, so the two resolve to one source. What
   the newer tui does to mgit's screens, checked against every pty suite, the unit
