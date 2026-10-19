@@ -11,6 +11,8 @@ cd "$(dirname "$0")/.."
 export PYTHONDONTWRITEBYTECODE=1
 unset VISUAL GIT_EDITOR EDITOR GIT_SEQUENCE_EDITOR
 export LC_ALL=C TZ=UTC
+# mgit remembers nothing between sessions in a test run (ui/GIT_ui_state.m31)
+export M31GIT_STATE=off
 if [ -z "${M31_ROOT:-}" ] || [ ! -f "$M31_ROOT/config.sh" ]; then
     echo "M31_ROOT is not set to an m31 release or checkout" >&2
     exit 1

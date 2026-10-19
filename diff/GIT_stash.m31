@@ -343,11 +343,11 @@ Result<bool, Error> write_index(str gitdir, GIT_index.Index index) {
 
 Error from_checkout(GIT_checkout.Error error) {
     match (error) {
-        case Dirty: {
+        case Dirty(_): {
             return Error.Dirty;
         }
-        case UntrackedCollision: {
-            return Error.UntrackedExists("a path");
+        case UntrackedCollision(str path): {
+            return Error.UntrackedExists(path);
         }
         case Submodule: {
             return Error.Failed(error.to_str());

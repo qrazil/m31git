@@ -536,14 +536,21 @@ pub type PaletteItem {
 /// the entry's first mode (tab order, "Everywhere" last), then by the table.
 /// The cursor keys (group "Move") are not actions anyone would look up and
 /// are left out; the flow variants of an action are the same action and are
-/// listed once.
+/// listed once. An action whose binding has no key (none in the table, or a
+/// binding with an empty list) is listed all the same, as `[no key]`: the
+/// palette is how it is reached, and running one needs the command, not a key.
 pub List<PaletteItem> palette_items() {
+    return palette_of(entries());
+}
+
+/// `palette_items` over the given entries (the unit tests add one with no key).
+pub List<PaletteItem> palette_of(List<Entry> table) {
     List<PaletteItem> out = [];
     List<str> seen = [];
     List<str> order = GIT_ui_modes.ids();
     order.push("*");
     for (str mode in order) {
-        for (Entry entry in entries()) {
+        for (Entry entry in table) {
             if (entry.home() != mode || entry.group == "Move") {
                 continue;
             }
@@ -563,7 +570,11 @@ pub List<PaletteItem> palette_items() {
                 }
                 continue;
             }
-            out.push(PaletteItem(entry.where() + ": " + entry.label + suffix + "   [" + entry.all_keys() + "]", entry));
+            str shown = entry.all_keys();
+            if (shown == "") {
+                shown = "no key";
+            }
+            out.push(PaletteItem(entry.where() + ": " + entry.label + suffix + "   [" + shown + "]", entry));
         }
     }
     return out;

@@ -1,0 +1,121 @@
+// What mgit remembers from one session to the next: today only which keys have
+// already told the person they moved ("s moved to Status (1): ..."), so the
+// long sentence is said once per key and not once per session.
+//
+// One small file, `$XDG_STATE_HOME/m31git/notified` (`~/.local/state/m31git/`
+// when that is not set), one key name per line, written to a temporary name
+// and renamed over the old file so a reader never sees half of it. Nothing
+// here is ever an error for the person: a state directory that cannot be made
+// or written means the sentence is said again next time.
+//
+//   M31GIT_STATE   off | 0 | false | no | none: read nothing and write nothing.
+//                  The tests set it, so no test run touches the real state.
+//
+// The file has no meaning to git and is not part of any repository.
+
+import fs;
+import io;
+import os;
+import random;
+import text;
+import core.GIT_env;
+
+pub const str DIR_NAME = "m31git";
+pub const str NOTIFIED_NAME = "notified";
+
+/// Is remembering switched off by `M31GIT_STATE`?
+pub bool is_off() {
+    str value = GIT_env.get("STATE").or("").trim().to_lower();
+    return value == "off" || value == "0" || value == "false" || value == "no" || value == "none";
+}
+
+/// The state directory, or "" when there is none to use: remembering is off, or
+/// neither `$XDG_STATE_HOME` (an absolute path, as the XDG rules say) nor
+/// `$HOME` is set.
+pub str directory() {
+    if (is_off()) {
+        return "";
+    }
+    str xdg = os.env("XDG_STATE_HOME").or("");
+    if (xdg.starts_with("/")) {
+        return fs.join(xdg, DIR_NAME);
+    }
+    str home = os.env("HOME").or("");
+    if (home == "") {
+        return "";
+    }
+    return fs.join(fs.join(fs.join(home, ".local"), "state"), DIR_NAME);
+}
+
+/// The keys already told about, [] when nothing is remembered.
+pub List<str> load_notified() {
+    List<str> out = [];
+    str dir = directory();
+    if (dir == "") {
+        return out;
+    }
+    match (io.read(fs.join(dir, NOTIFIED_NAME))) {
+        case Ok(str body): {
+            for (str line in body.split("\n")) {
+                if (line != "" && !out.contains(line)) {
+                    out.push(line);
+                }
+            }
+        }
+        case Err(_): {
+        }
+    }
+    return out;
+}
+
+/// Remember `keys`, replacing what was remembered. True when the file was
+/// written; false (and nothing changed) when remembering is off or the
+/// directory or file cannot be written.
+pub bool save_notified(List<str> keys) {
+    str dir = directory();
+    if (dir == "") {
+        return false;
+    }
+    match (fs.makedirs(dir)) {
+        case Ok(_): {
+        }
+        case Err(_): {
+            return false;
+        }
+    }
+    List<str> sorted = [];
+    for (str key in keys) {
+        if (key != "" && !key.contains("\n") && !sorted.contains(key)) {
+            sorted.push(key);
+        }
+    }
+    sorted.sort();
+    str body = "";
+    if (sorted.size() > 0) {
+        body = sorted.join("\n") + "\n";
+    }
+    str path = fs.join(dir, NOTIFIED_NAME);
+    random.System rnd = random.system();
+    str temp = path + ".tmp" + rnd.hex(12);
+    match (io.write(temp, body)) {
+        case Ok: {
+        }
+        case Err(_): {
+            return false;
+        }
+    }
+    match (fs.rename(temp, path)) {
+        case Ok(_): {
+            return true;
+        }
+        case Err(_): {
+            match (fs.remove(temp)) {
+                case Ok(_): {
+                }
+                case Err(_): {
+                }
+            }
+            return false;
+        }
+    }
+}

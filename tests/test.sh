@@ -26,6 +26,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 unset VISUAL GIT_EDITOR EDITOR GIT_SEQUENCE_EDITOR
 export LC_ALL=C TZ=UTC
+# mgit remembers nothing between sessions in a test run (ui/GIT_ui_state.m31)
+export M31GIT_STATE=off
 
 # TEST_HASH=sha256 runs every fixture as a SHA-256 repository: `git init` takes
 # its algorithm from GIT_DEFAULT_HASH (and `git clone` from the remote), so the

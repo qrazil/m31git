@@ -12,6 +12,7 @@ import core.GIT_checkout;
 import core.GIT_config;
 import core.GIT_ident;
 import date;
+import fs;
 import core.GIT_log;
 import core.GIT_index;
 import io;
@@ -560,6 +561,97 @@ pub str strip_comment_lines(str raw) {
         keep.push(line);
     }
     return keep.join("\n").trim();
+}
+
+/// HEAD's commit message with the comment lines stripped, "" for an unborn
+/// branch or a HEAD that is not a readable commit.
+pub str head_message_text(str gitdir) {
+    str id = "";
+    match (GIT_refs.head(gitdir)) {
+        case Ok(GIT_refs.Head head): {
+            match (head) {
+                case Born(str name, str born_id): {
+                    id = born_id;
+                }
+                case Unborn(str name): {
+                    return "";
+                }
+                case Detached(str detached_id): {
+                    id = detached_id;
+                }
+            }
+        }
+        case Err(GIT_refs.Error error): {
+            return "";
+        }
+    }
+    match (GIT_object.read(gitdir, id)) {
+        case Ok(GIT_object.Object object): {
+            match (object.body) {
+                case Commit(GIT_object.Commit commit): {
+                    return strip_comment_lines(commit.message.utf8().or(""));
+                }
+                case Blob: {
+                    return "";
+                }
+                case Tree(List<GIT_object.Entry> ignored): {
+                    return "";
+                }
+                case Tag: {
+                    return "";
+                }
+            }
+        }
+        case Err(GIT_object.Error error): {
+            return "";
+        }
+    }
+}
+
+/// Is the file at `path` (`COMMIT_EDITMSG`) a leftover rather than a draft?
+/// git writes that file for every commit and keeps it, so after any commit
+/// made outside mgit it holds the message of a commit that is already made.
+/// It is a leftover when HEAD has moved since it was written (it is older than
+/// HEAD's reflog), or when the two carry the same timestamp (a coarse clock) and
+/// it says what HEAD's own commit says. A message that repeats the last commit's
+/// is a draft when it is newer: people do write "wip" twice. An amend writes
+/// HEAD's message on purpose, so it is never a leftover. A file that is not
+/// there is not one either (there is nothing to show), and a repository with no
+/// reflog for HEAD (`core.logAllRefUpdates=false`) has no order to go by, so
+/// nothing is a leftover there.
+pub bool is_stale_message(str gitdir, str path, bool is_amending) {
+    if (is_amending) {
+        return false;
+    }
+    match (fs.stat(path)) {
+        case Ok(fs.Stat mine): {
+            match (fs.stat(fs.join(gitdir, "logs/HEAD"))) {
+                case Ok(fs.Stat reflog): {
+                    if (mine.mtime_ns < reflog.mtime_ns) {
+                        return true;
+                    }
+                    if (mine.mtime_ns > reflog.mtime_ns) {
+                        return false;
+                    }
+                }
+                case Err(_): {
+                    return false;
+                }
+            }
+        }
+        case Err(_): {
+            return false;
+        }
+    }
+    match (io.read(path)) {
+        case Ok(str raw): {
+            str written = strip_comment_lines(raw);
+            return written != "" && written == head_message_text(gitdir);
+        }
+        case Err(_): {
+            return false;
+        }
+    }
 }
 
 /// The line `git commit -s` adds: `Signed-off-by: Name <email>`.

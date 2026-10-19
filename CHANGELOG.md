@@ -16,6 +16,24 @@ Each release's changes in one place (the details are in `README.md` and
   internal path, so the code behind them keeps its checks, and say how many. Tests: `tests/test_cli.sh` checks that each of the
   old forms of `tests/cli_cases.txt` is refused with the hint `-migrate` gives, that
   nothing runs, and that the new form runs.
+- **mgit: git's leftover `COMMIT_EDITMSG` is not a draft.** git keeps the file after
+  every commit, and the Commit panel showed its message as if it were a draft (and `f`
+  would have committed it again). A file older than HEAD's reflog (or, on a tie of timestamps,
+  saying what HEAD's commit says) is now `(none yet: e to write one)`, is not committed by `f`, and
+  `e` starts from the template; an amend's prefilled message is still a draft.
+- **mgit: the "key moved" notice is said once, not once per session.** The keys already
+  told about are kept in `$XDG_STATE_HOME/m31git/notified` (default
+  `~/.local/state/m31git/`), written atomically; `M31GIT_STATE=off` reads and writes
+  nothing, and the test runs set it.
+- **mgit: the command palette lists every action**, including one whose binding has no
+  key (`[no key]`).
+- **mgit: a refused detached checkout names the file** that blocks it (`check out
+  refused: a.txt has local changes (HEAD stays)`, `an untracked file is
+  in the way of x.txt`). Library: `GIT_checkout.Error.Dirty` and `UntrackedCollision`
+  carry the path, and a stash apply names the untracked file in the way.
+- Tests: `tests/pty_modes.py` (leftover message, notice memory, the named files),
+  `tests/t_modes.m31` (palette rows without a key), `tests/test_checkout.sh` (the file
+  in the message).
 
 ## 0.26.0
 

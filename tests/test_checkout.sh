@@ -99,8 +99,8 @@ if build t_checkout; then
     before=$(cd "$cofx" && git status --short; git rev-parse HEAD; cat a.txt)
     out=$("$WORK/t_checkout" "$gd" "$cofx" checkout feature 2>&1); rc=$?
     after=$(cd "$cofx" && git status --short; git rev-parse HEAD; cat a.txt)
-    if [ $rc -eq 1 ] && case "$out" in refused:*) true;; *) false;; esac && [ "$before" = "$after" ] && [ ! -e "$cofx/added.txt" ]; then
-        note "checkout: dirty tracked file refused, nothing written ($out)"
+    if [ $rc -eq 1 ] && case "$out" in refused:*" a.txt, "*) true;; *) false;; esac && [ "$before" = "$after" ] && [ ! -e "$cofx/added.txt" ]; then
+        note "checkout: dirty tracked file refused naming it, nothing written ($out)"
     else
         bad "checkout: dirty refusal" "rc=$rc out=$out" "$(diff <(echo "$before") <(echo "$after"))"
     fi
@@ -120,8 +120,8 @@ if build t_checkout; then
     before=$(cd "$cofx" && git status --short; git rev-parse HEAD; cat added.txt)
     out=$("$WORK/t_checkout" "$gd" "$cofx" checkout feature 2>&1); rc=$?
     after=$(cd "$cofx" && git status --short; git rev-parse HEAD; cat added.txt)
-    if [ $rc -eq 1 ] && case "$out" in refused:*) true;; *) false;; esac && [ "$before" = "$after" ]; then
-        note "checkout: untracked collision refused, nothing written ($out)"
+    if [ $rc -eq 1 ] && case "$out" in refused:*" added.txt, "*) true;; *) false;; esac && [ "$before" = "$after" ]; then
+        note "checkout: untracked collision refused naming the file, nothing written ($out)"
     else
         bad "checkout: untracked collision refusal" "rc=$rc out=$out" "$(diff <(echo "$before") <(echo "$after"))"
     fi

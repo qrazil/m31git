@@ -49,7 +49,8 @@ pub bool CommitLayer.begin_commit() {
 /// launch happens, called back once the terminal is cooked again.
 pub void CommitLayer.edit_message() {
     bool is_merge = GIT_merge.is_in_progress(gitdir);
-    if (!fs.is_present(commit_message_path) || (is_merge && !GIT_merge.is_message_file_current(gitdir, commit_message_path))) {
+    bool is_leftover = !is_merge && GIT_ui_model.is_stale_message(gitdir, commit_message_path, is_amending);
+    if (!fs.is_present(commit_message_path) || is_leftover || (is_merge && !GIT_merge.is_message_file_current(gitdir, commit_message_path))) {
         // A merge under way starts from its own message (`MERGE_MSG`).
         str prefill = "";
         if (is_merge) {
@@ -95,7 +96,7 @@ pub void CommitLayer.confirm_abort() {
     match (io.read(commit_message_path)) {
         case Ok(str raw): {
             str stripped = GIT_ui_model.strip_comment_lines(raw);
-            if (stripped != "") {
+            if (stripped != "" && !GIT_ui_model.is_stale_message(gitdir, commit_message_path, is_amending)) {
                 lost = "the draft message \"" + stripped.split("\n")[0] + "\"";
             }
         }
@@ -225,7 +226,10 @@ pub void CommitLayer.finish_commit() {
     } else {
         match (io.read(commit_message_path)) {
             case Ok(str edited_text): {
-                raw = edited_text;
+                // git's leftover from an earlier commit is not a message
+                if (!GIT_ui_model.is_stale_message(gitdir, commit_message_path, is_amending)) {
+                    raw = edited_text;
+                }
             }
             case Err(io.Error error): {
                 message = "cannot read " + commit_message_path + ": " + error.to_str();

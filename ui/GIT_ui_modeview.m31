@@ -138,6 +138,9 @@ str draft_line(GIT_ui_core.Core core) {
     match (io.read(core.commit_message_path)) {
         case Ok(str raw): {
             str stripped = GIT_ui_model.strip_comment_lines(raw);
+            if (GIT_ui_model.is_stale_message(core.gitdir, core.commit_message_path, core.is_amending)) {
+                return "(none yet: e to write one)";
+            }
             if (stripped == "") {
                 return "(empty: e to write one)";
             }

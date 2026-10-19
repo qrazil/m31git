@@ -482,7 +482,7 @@ pub List<GIT_ui_core.Hint> ResetMenu.hints() {
 
 /// `o`: check the commit under the cursor out, detached. Refused, writing
 /// nothing, where git refuses: a file the checkout would change has local
-/// changes, or an untracked file is in the way.
+/// changes, or an untracked file is in the way. The message names that file.
 pub void detach(GIT_ui_core.Core core) {
     if (is_blocked(core, "check out")) {
         return;
@@ -500,11 +500,11 @@ pub void detach(GIT_ui_core.Core core) {
         }
         case Err(GIT_checkout.Error error): {
             match (error) {
-                case Dirty: {
-                    core.say("check out refused: a file it would change has local changes (HEAD stays)");
+                case Dirty(str path): {
+                    core.say("check out refused: " + path + " has local changes (HEAD stays)");
                 }
-                case UntrackedCollision: {
-                    core.say("check out refused: an untracked file is in the way (HEAD stays)");
+                case UntrackedCollision(str path): {
+                    core.say("check out refused: an untracked file is in the way of " + path + " (HEAD stays)");
                 }
                 case Submodule: {
                     core.say("check out refused: " + error.to_str());

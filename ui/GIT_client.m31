@@ -104,6 +104,7 @@ import ui.GIT_ui_remote;
 import ui.GIT_ui_sbs;
 import ui.GIT_ui_search;
 import ui.GIT_ui_sequencer;
+import ui.GIT_ui_state;
 import ui.GIT_ui_statusline;
 import ui.GIT_ui_stash;
 import ui.GIT_ui_tags;
@@ -137,6 +138,7 @@ pub static State State.open(str gitdir, str worktree) {
     state.set_syntax(GIT_ui_highlight.is_enabled(gitdir), GIT_ui_highlight.is_dark_terminal());
     state.load_folds();
     state.load_signoff();
+    state.load_notified();
     return state;
 }
 
@@ -648,6 +650,14 @@ pub TUI_app.Action State.handle_key(term.Code code) {
     return action;
 }
 
+/// The keys told about in earlier sessions (`GIT_ui_state`) need no long
+/// sentence again.
+void State.load_notified() {
+    for (str key in GIT_ui_state.load_notified()) {
+        notified.set(key, true);
+    }
+}
+
 /// A bound key this mode does not offer: name the mode that does. The first
 /// time in a session it is a full sentence; after that, the short form.
 void State.say_moved(str view, str scope, str cmd, str name) {
@@ -663,6 +673,7 @@ void State.say_moved(str view, str scope, str cmd, str name) {
                 message = name + ": " + home + " (" + (GIT_ui_modes.index_of(entry.home()) + 1).to_str() + ")";
             } else {
                 notified.set(name, true);
+                GIT_ui_state.save_notified(notified.keys());
                 message = name + " moved to " + home + " (" + (GIT_ui_modes.index_of(entry.home()) + 1).to_str() + "): " + entry.label + ". Tab or " + (GIT_ui_modes.index_of(entry.home()) + 1).to_str() + " goes there; : lists every command";
             }
         }

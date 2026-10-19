@@ -86,6 +86,13 @@ every hunk, `[` `]` move between hunks, `{` `}` between files, `h` `l` `e` `E`
 
 A panel, not a list: the heading says whether it is a new commit, an amend or a
 merge commit, then the first line of the draft message and the staged files.
+git keeps `COMMIT_EDITMSG` after every commit, so a file that is a leftover is not
+a draft: one older than HEAD's reflog (HEAD has moved since it was written), or one
+with the reflog's own timestamp that says what HEAD's own commit says, shows as `(none yet: e to write one)`, is
+not what `f` commits (it refuses an empty message), and `e` starts again from the
+template. An amend's prefilled message is a draft, and so is a message newer than
+the last commit that repeats it. (With no reflog for HEAD, `core.logAllRefUpdates=false`,
+there is no order to go by and nothing is treated as a leftover.)
 
 | key | does |
 |---|---|
@@ -163,9 +170,10 @@ say why (`reset is blocked while CHERRY-PICKING (A or V: continue, skip or abort
 * **Check out** (`o`) is `git checkout --detach <commit>`: HEAD is left on the
   commit, no branch moves, and the status line shows `detached @ 1a2b3c4`
   afterwards. It refuses, changing nothing, where git refuses: a file the
-  checkout would change has local changes (`check out refused: local changes to
-  a file the switch would overwrite -- commit, stage elsewhere, or discard them
-  first (HEAD did not move)`), or an untracked file is in the way. Changes to
+  checkout would change has local changes (`check out refused: a.txt has local
+  changes (HEAD stays)`), or an untracked file is in
+  the way (`check out refused: an untracked file is in the way of s.txt (HEAD
+  stays)`); either way the message names the file. Changes to
   files the two commits do not differ in are carried along, as git carries them.
   `b` then `c` / Enter in Branches gets you back on a branch.
 
@@ -258,14 +266,20 @@ A fuzzy picker over every action of every mode, written `Branches: switch to the
 branch   [Enter]`, with the key to press next time. Typing filters (a lower-case
 query ignores case); `Enter` runs it: it switches to the action's mode and does
 it, exactly as its key would. Also in the palette: `Go to <mode>` for each mode.
-The cursor-movement keys are not listed (nobody looks them up).
+The cursor-movement keys are not listed (nobody looks them up). An action whose
+binding has no key is listed too, as `[no key]`, and runs the same way.
 
 ## Keys that moved
 
 Keys keep their letters. A key that is bound but belongs to another mode says
 so instead of doing nothing: `A moved to History (3): cherry-pick. Tab or 3 goes
 there; : lists every command`. The full sentence is shown the first time a key
-is pressed in a session; after that the short form (`A: History (3)`). A key
+is pressed, once and for all: the keys already told about are kept in
+`$XDG_STATE_HOME/m31git/notified` (`~/.local/state/m31git/notified`), one name per
+line, written whole to a temporary file and renamed over the old one. A directory
+that cannot be written only means the sentence comes again. After the first time
+it is the short form (`A: History (3)`). `M31GIT_STATE=off` reads and writes
+nothing (the tests set it). A key
 that is simply absent from a panel (a movement key in the Commit panel) says
 nothing. This notice is meant for one release; the table row that drives it is
 `GIT_ui_keymap.moved_to`.

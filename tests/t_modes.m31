@@ -224,6 +224,62 @@ for (GIT_ui_keymap.PaletteItem item in palette) {
     }
 }
 counter.check("palette: reads 'Status: stage   [s]'", is_staging_in_status, palette[0].text);
+// An action whose binding has no key is still listed, as "[no key]", and runs from the palette.
+List<GIT_ui_keymap.Entry> with_unbound = GIT_ui_keymap.entries();
+with_unbound.push(GIT_ui_keymap.Entry("history", GIT_ui_keymap.VIEW_DOC, GIT_ui_core.SCOPE_OUTLINE, "unbound-action", "an action with no key", "Test", 0));
+with_unbound.push(GIT_ui_keymap.Entry("*", GIT_ui_keymap.VIEW_ANY, GIT_ui_core.SCOPE_GLOBAL, "unbound-global", "a global one with no key", "Test", 0));
+List<GIT_ui_keymap.PaletteItem> unbound_palette = GIT_ui_keymap.palette_of(with_unbound);
+bool is_unbound_listed = false;
+bool is_global_unbound_listed = false;
+for (GIT_ui_keymap.PaletteItem item in unbound_palette) {
+    if (item.text == "History: an action with no key   [no key]" && item.entry.cmd == "unbound-action") {
+        is_unbound_listed = true;
+    }
+    if (item.text == "Everywhere: a global one with no key   [no key]" && item.entry.cmd == "unbound-global") {
+        is_global_unbound_listed = true;
+    }
+}
+counter.check("palette: an action with no key bound is listed as [no key]", is_unbound_listed && is_global_unbound_listed, unbound_palette[unbound_palette.size() - 1].text);
+counter.check("palette: the two unbound actions are the only rows added", unbound_palette.size() == palette.size() + 2, unbound_palette.size().to_str() + " vs " + palette.size().to_str());
+bool is_all_keyed_or_marked = true;
+for (GIT_ui_keymap.PaletteItem item in unbound_palette) {
+    if (!item.text.ends_with("]") || item.text.contains("[]")) {
+        is_all_keyed_or_marked = false;
+    }
+}
+counter.check("palette: no row shows an empty key", is_all_keyed_or_marked, "empty key");
+// Every command the key table binds in the base scopes has a row (not only the first of each mode).
+bool is_every_command_listed = true;
+str missing_command = "";
+for (GIT_ui_core.Binding binding in GIT_ui_core.key_table()) {
+    if (binding.scope != GIT_ui_core.SCOPE_OUTLINE && binding.scope != GIT_ui_core.SCOPE_DIFF && binding.scope != GIT_ui_core.SCOPE_GLOBAL && binding.scope != GIT_ui_core.SCOPE_COMMIT) {
+        continue;
+    }
+    bool is_move = false;
+    bool is_offered = false;
+    for (GIT_ui_keymap.Entry entry in table) {
+        if (entry.scope == binding.scope && entry.cmd == binding.cmd) {
+            is_offered = true;
+            if (entry.group == "Move") {
+                is_move = true;
+            }
+        }
+    }
+    if (!is_offered || is_move) {
+        continue;
+    }
+    bool is_listed = false;
+    for (GIT_ui_keymap.PaletteItem item in palette) {
+        if (item.entry.scope == binding.scope && item.entry.cmd == binding.cmd) {
+            is_listed = true;
+        }
+    }
+    if (!is_listed && binding.cmd != GIT_ui_core.CMD_MODE_GOTO) {
+        is_every_command_listed = false;
+        missing_command = binding.scope + ":" + binding.cmd;
+    }
+}
+counter.check("palette: every bound command of the base scopes has a row", is_every_command_listed, missing_command);
 
 // --- the hint row -----------------------------------------------------------------
 

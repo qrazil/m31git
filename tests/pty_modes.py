@@ -89,6 +89,9 @@ for k in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
 for k in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
     CLIENT_ENV[k] = "client@example.com"
 CLIENT_ENV["M31GIT_MOUSE"] = "on"
+# no session remembers which keys it told about (ui/GIT_ui_state.m31): the checks of a key that moved
+# expect the long sentence the first time, and the sessions of one run share a home
+CLIENT_ENV["M31GIT_STATE"] = "off"
 for k in ("GIT_EDITOR", "VISUAL", "EDITOR", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
     CLIENT_ENV.pop(k, None)
 CLIENT_ENV.pop("NO_COLOR", None)
@@ -542,8 +545,15 @@ def behaviour(binpath, root):
         text = t.text()
         check("Commit shows what the commit will contain", "New commit" in text and "Staged changes (1)" in text and "A  staged.txt" in text, text)
         check("Commit hints", t.lines()[23].lstrip().startswith("e write message  f commit staged  A amend HEAD"), t.lines()[23])
+        # the fixture's own `git commit -m first` left COMMIT_EDITMSG behind: not a draft
+        check("the commit git made is not shown as a draft", "Message  (none yet: e to write one)" in t.text() and "first" not in t.text().split("Message")[1].split("\n")[0], t.text())
+        draft = os.path.join(fx, ".git", "COMMIT_EDITMSG")
+        write(draft, "a draft of mine\n")
+        set_age(draft, 100, fx)
+        t.send("2")
+        check("a draft written after the last commit is shown", "Message  a draft of mine" in t.text(), t.text())
         t.send("a")
-        check("a in Commit asks before it discards the draft, naming it", 'discard the draft message "first"?' in t.text(), t.text())
+        check("a in Commit asks before it discards the draft, naming it", 'discard the draft message "a draft of mine"?' in t.text(), t.text())
         t.send("n")
         check("any other key keeps the draft", "kept the draft" in t.text() and os.path.exists(os.path.join(fx, ".git", "COMMIT_EDITMSG")), t.text())
         t.send("\x1b")
@@ -1030,6 +1040,19 @@ def build_history(root, name):
     return fx
 
 
+def build_removed(root, name):
+    """main with three commits: first-x (x.txt), remove-x (x.txt gone), third (y.txt)."""
+    fx = os.path.join(root, name)
+    os.makedirs(fx)
+    must(fx, "init", "-q", "-b", "main")
+    must(fx, "config", "gc.auto", "0")
+    commit_file(fx, "x.txt", "x\n", "first-x")
+    must(fx, "rm", "-q", "x.txt")
+    must(fx, "commit", "-q", "-m", "remove-x")
+    commit_file(fx, "y.txt", "why\n", "third")
+    return fx
+
+
 def make_dirty(fx):
     """Unstaged changes to a tracked file, a staged new file, an untracked file."""
     write(os.path.join(fx, "a.txt"), "v2 edited\n")
@@ -1182,10 +1205,28 @@ def detach_actions(binpath, root):
         goto_commit(t, "alpha-1")
         t.send("o")
         check("o refuses when a file it would change has local changes, saying so", "check out refused" in t.text() and "local changes" in t.text() and "HEAD stays" in t.text(), t.text())
+        check("the refusal names the file that blocks it", "check out refused: a.txt has local changes" in flat(t.text()), flat(t.text()))
         _, rc = git(twin, "checkout", "--detach", must(twin, "rev-parse", "HEAD~3"))
         check("git checkout --detach refuses it too", rc != 0, "rc=%r" % rc)
         check("a refused check out changes nothing (HEAD, index, files, logs)", differences(before, snapshot(fx)) == "" and differences(snapshot(fx), snapshot(twin)) == "", differences(snapshot(fx), snapshot(twin)))
         check("the status line still shows the branch", "main" in t.lines()[1] and "detached" not in t.lines()[1], t.lines()[1])
+        t.quit()
+    finally:
+        t.kill()
+
+    # an untracked file where the checkout would write one: refused, by both, naming the file
+    fx, twin = twin_pair(root, "detach-untracked", build_removed)
+    for repo in (fx, twin):
+        write(os.path.join(repo, "x.txt"), "mine\n")
+    t = Term(binpath, fx, 24, 80)
+    try:
+        before = snapshot(fx)
+        goto_commit(t, "first-x")
+        t.send("o")
+        check("o refuses when an untracked file is in the way, naming it", "check out refused: an untracked file is in the way of x.txt" in flat(t.text()) and "HEAD stays" in flat(t.text()), flat(t.text()))
+        _, rc = git(twin, "checkout", "--detach", must(twin, "rev-parse", "HEAD~2"))
+        check("git checkout --detach refuses it too", rc != 0, "rc=%r" % rc)
+        check("a refused check out changes nothing and equals git's refusal", differences(before, snapshot(fx)) == "" and differences(snapshot(fx), snapshot(twin)) == "", differences(snapshot(fx), snapshot(twin)))
         t.quit()
     finally:
         t.kill()
@@ -1296,12 +1337,155 @@ def signoff_actions(binpath, root):
     check("the configured sign-off uses user.name and user.email", git(fx, "log", "-1", "--format=%B")[0] == "configured\n\nSigned-off-by: Config Name <config@example.com>", git(fx, "log", "-1", "--format=%B")[0])
 
 
+def set_age(path, seconds_after_reflog, fx):
+    """Give `path` a modification time `seconds_after_reflog` after HEAD's reflog was written (negative: before)."""
+    base = os.stat(os.path.join(fx, ".git", "logs", "HEAD")).st_mtime
+    stamp = base + seconds_after_reflog
+    os.utime(path, (stamp, stamp))
+
+
+def leftover_message(binpath, root):
+    """git leaves COMMIT_EDITMSG after a commit: it is not a draft in the Commit panel."""
+    editor = os.path.join(root, "leftover-editor.sh")
+    with open(editor, "w") as f:
+        f.write("#!/bin/sh\ncp \"$1\" \"$MGIT_TEST_SEEN\"\nexit 0\n")
+    os.chmod(editor, 0o755)
+
+    # a commit made by git: the file says what HEAD says
+    fx = build_simple(root, "leftover")
+    must(fx, "commit", "-q", "-m", "made by git")
+    msgfile = os.path.join(fx, ".git", "COMMIT_EDITMSG")
+    check("leftover: git left COMMIT_EDITMSG behind with the commit's message", os.path.exists(msgfile) and "made by git" in open(msgfile).read(), "no file")
+    write(os.path.join(fx, "later.txt"), "later\n")
+    must(fx, "add", "later.txt")
+    seen = os.path.join(root, "leftover.seen")
+    env = dict(CLIENT_ENV)
+    env["EDITOR"] = editor
+    env["MGIT_TEST_SEEN"] = seen
+    t = Term(binpath, fx, 24, 80, env=env)
+    try:
+        t.send("c")
+        text = t.text()
+        check("leftover: the Commit panel does not show git's last message as a draft", "made by git" not in text and "Message  (none yet: e to write one)" in text, text)
+        head = must(fx, "rev-parse", "HEAD")
+        t.send("f")
+        check("leftover: f does not commit it", must(fx, "rev-parse", "HEAD") == head and "empty commit message" in flat(t.text()), flat(t.text()))
+        t.send("c")
+        t.send("e")
+        time.sleep(0.4)
+        t.drain()
+        got = open(seen).read() if os.path.exists(seen) else "(editor not run)"
+        check("leftover: e opens the template, not git's last message", "made by git" not in got and got.lstrip().startswith("#"), got)
+    finally:
+        t.kill()
+
+    # a file older than HEAD's reflog is a leftover whatever it says; a newer one is a draft
+    fx = build_simple(root, "leftover-age")
+    must(fx, "commit", "-q", "-m", "second by git")
+    msgfile = os.path.join(fx, ".git", "COMMIT_EDITMSG")
+    write(msgfile, "old words from another commit\n")
+    set_age(msgfile, -100, fx)
+    t = Term(binpath, fx, 24, 80)
+    try:
+        t.send("c")
+        check("leftover: a file older than HEAD's reflog is no draft", "old words" not in t.text() and "(none yet" in t.text(), t.text())
+        t.send("a")
+        t.quit()
+    finally:
+        t.kill()
+    check("leftover: discarding it removes the file without asking", not os.path.exists(msgfile), "still there")
+    write(msgfile, "my draft subject\n")
+    set_age(msgfile, 100, fx)
+    t = Term(binpath, fx, 24, 80)
+    try:
+        t.send("c")
+        check("leftover: a file newer than HEAD's reflog is the draft", "Message  my draft subject" in t.text(), t.text())
+        t.send("a")
+        check("leftover: a real draft is asked about before it is discarded", "my draft subject" in t.text(), t.text())
+        t.send("n")
+        t.quit()
+    finally:
+        t.kill()
+    check("leftover: and the answer no keeps it", os.path.exists(msgfile), "gone")
+
+    # an amend writes HEAD's message on purpose: that is a draft
+    fx = build_simple(root, "leftover-amend")
+    must(fx, "commit", "-q", "-m", "amend me")
+    t = Term(binpath, fx, 24, 80)
+    try:
+        t.send("c")
+        t.send("A")
+        check("leftover: the amend's prefilled message is shown", "Message  amend me" in t.text(), t.text())
+        t.send("a")
+        t.send("y")
+        t.quit()
+    finally:
+        t.kill()
+
+
+def notice_memory(binpath, root):
+    """The 'moved to' sentence is said once per key, across sessions."""
+    fx = build_simple(root, "notice")
+    state_home = os.path.join(root, "state-home")
+    notified = os.path.join(state_home, "m31git", "notified")
+    env = dict(CLIENT_ENV)
+    env.pop("M31GIT_STATE", None)
+    env["XDG_STATE_HOME"] = state_home
+    t = Term(binpath, fx, 24, 80, env=env)
+    try:
+        t.send("A")
+        check("notice: the first session says it in full", "A moved to History (3)" in t.text(), t.text().split("\n")[22])
+        t.quit()
+    finally:
+        t.kill()
+    check("notice: and remembers the key under $XDG_STATE_HOME/m31git", os.path.exists(notified) and open(notified).read() == "A\n", repr(open(notified).read() if os.path.exists(notified) else None))
+    left = [n for n in os.listdir(os.path.dirname(notified)) if n != "notified"]
+    check("notice: the atomic write leaves no temporary file behind", left == [], repr(left))
+    t = Term(binpath, fx, 24, 80, env=env)
+    try:
+        t.send("A")
+        check("notice: the next session uses the short form for it", "A: History (3)" in t.text() and "moved to" not in t.text().split("\n")[22], t.text().split("\n")[22])
+        t.send("z")
+        check("notice: another key still gets the full sentence", "z moved to Stash (5)" in t.text(), t.text().split("\n")[22])
+        t.quit()
+    finally:
+        t.kill()
+    check("notice: both keys are remembered", open(notified).read() == "A\nz\n", repr(open(notified).read()))
+    # the switch for tests: nothing is read and nothing is written
+    off = dict(env)
+    off["M31GIT_STATE"] = "off"
+    before = open(notified).read()
+    t = Term(binpath, fx, 24, 80, env=off)
+    try:
+        t.send("A")
+        check("notice: M31GIT_STATE=off reads nothing (the full sentence again)", "A moved to History (3)" in t.text(), t.text().split("\n")[22])
+        t.send("s")
+        t.quit()
+    finally:
+        t.kill()
+    check("notice: M31GIT_STATE=off writes nothing", open(notified).read() == before, repr(open(notified).read()))
+    # no state home and no usable HOME directory: the client still runs and says it in full
+    nohome = os.path.join(root, "state-unwritable")
+    write(nohome, "a file, not a directory\n")
+    env2 = dict(env)
+    env2["XDG_STATE_HOME"] = os.path.join(nohome, "inside")
+    t = Term(binpath, fx, 24, 80, env=env2)
+    try:
+        t.send("A")
+        check("notice: a state directory that cannot be made does not get in the way", "A moved to History (3)" in t.text(), t.text().split("\n")[22])
+        t.quit()
+    finally:
+        t.kill()
+
+
 def actions(binpath, root):
     branch_actions(binpath, root)
     rename_actions(binpath, root)
     reset_actions(binpath, root)
     detach_actions(binpath, root)
     signoff_actions(binpath, root)
+    leftover_message(binpath, root)
+    notice_memory(binpath, root)
 
 
 def main():

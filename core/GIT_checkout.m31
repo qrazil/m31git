@@ -80,10 +80,12 @@ import core.GIT_icase;
 
 /// Why a checkout did not happen (nothing written) or did not finish.
 pub enum Error {
-    /// A path the switch must rewrite has staged or unstaged changes.
-    Dirty;
-    /// An untracked file is already where the target tree needs to write.
-    UntrackedCollision;
+    /// A path the switch must rewrite has staged or unstaged changes; the
+    /// path, relative to the work tree.
+    Dirty(str);
+    /// An untracked file is already where the target tree needs to write; the
+    /// path the switch would write there, relative to the work tree.
+    UntrackedCollision(str);
     /// The switch would have to touch a submodule, which this cannot do.
     Submodule;
     /// The target is not a commit.
@@ -106,11 +108,11 @@ pub enum Error {
 
 pub str Error.to_str() {
     match (this) {
-        case Dirty: {
-            return "local changes to a file the switch would overwrite -- commit, stage elsewhere, or discard them first";
+        case Dirty(str path): {
+            return "local changes to " + path + ", a file the switch would overwrite -- commit, stage elsewhere, or discard them first";
         }
-        case UntrackedCollision: {
-            return "an untracked file is in the way of a file the switch would write";
+        case UntrackedCollision(str path): {
+            return "an untracked file is in the way of " + path + ", a file the switch would write";
         }
         case Submodule: {
             return "the switch would touch a submodule, which this client cannot check out";
@@ -388,7 +390,7 @@ pub Result<Summary, Error> checkout(str gitdir, str worktree, str target_commit_
     }
     for (Step step in plan) {
         if (dirty.contains(step.path)) {
-            return Result<Summary, Error>.Err(Error.Dirty);
+            return Result<Summary, Error>.Err(Error.Dirty(step.path));
         }
         if (step.old.id == "" && step.new.id != "") {
             // Nothing in HEAD at this path, so anything on disk here is
@@ -397,7 +399,7 @@ pub Result<Summary, Error> checkout(str gitdir, str worktree, str target_commit_
             // for a client whose whole promise is never losing a file).
             str full = fs.join(worktree, step.path);
             if ((untracked.contains(step.path) || fs.is_present(full) || fs.is_link(full)) && !is_icase_alias(gitdir, worktree, step.path)) {
-                return Result<Summary, Error>.Err(Error.UntrackedCollision);
+                return Result<Summary, Error>.Err(Error.UntrackedCollision(step.path));
             }
         }
     }
@@ -830,16 +832,16 @@ pub Result<Summary, Error> apply_tree_diff(str gitdir, str worktree, str from_tr
             return Result<Summary, Error>.Err(Error.Submodule);
         }
         if (conflicted.contains(path)) {
-            return Result<Summary, Error>.Err(Error.Dirty);
+            return Result<Summary, Error>.Err(Error.Dirty(path));
         }
         if (is_in_index(staged, path, new)) {
             continue;
         }
         if (!is_in_index(staged, path, old)) {
-            return Result<Summary, Error>.Err(Error.Dirty);
+            return Result<Summary, Error>.Err(Error.Dirty(path));
         }
         if (old.id != "" && worktree_state(fs.join(worktree, path), get_entry(staged, path)) == 2) {
-            return Result<Summary, Error>.Err(Error.Dirty);
+            return Result<Summary, Error>.Err(Error.Dirty(path));
         }
         plan.push(Step(path, old, new));
         if (new.id == "") {
@@ -848,7 +850,7 @@ pub Result<Summary, Error> apply_tree_diff(str gitdir, str worktree, str from_tr
     }
     for (Step step in plan) {
         if (step.old.id == "" && is_blocked(worktree, step.path, deleted) && !is_icase_alias(gitdir, worktree, step.path)) {
-            return Result<Summary, Error>.Err(Error.UntrackedCollision);
+            return Result<Summary, Error>.Err(Error.UntrackedCollision(step.path));
         }
     }
     // --- do it: removals first, so a file can become a directory ---------
@@ -936,7 +938,7 @@ pub Result<Summary, Error> reset_files(str gitdir, str worktree, str commit) {
     }
     for (Step step in writes) {
         if (is_blocked_for_reset(worktree, step.path, gone)) {
-            return Result<Summary, Error>.Err(Error.UntrackedCollision);
+            return Result<Summary, Error>.Err(Error.UntrackedCollision(step.path));
         }
     }
     Map<str, bool> replaced = {};
