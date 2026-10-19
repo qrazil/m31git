@@ -375,7 +375,7 @@ compare history-config "$fixtures_dir/unicode" diff -z --name-status HEAD~2 HEAD
 compare history-config "$fixtures_dir/unicode" diff -z --stat HEAD~2 HEAD
 
 if [ "$(fallback_count)" -ne 0 ]; then
-    echo "diff: $(fallback_count) of the forms ran through the transition shim (options 1git's command line no longer has)"
+    echo "diff: $(fallback_count) of the forms ran through git's grammar directly (options 1git's command line no longer has)"
 fi
 if [ "$bad" -eq 0 ]; then
     echo "diff: all $n forms byte-identical to git"

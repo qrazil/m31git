@@ -14,8 +14,9 @@ why would anyone use our 1git over git?" So:
   on a pipe (`scripts/compare_*.sh` run git 2.55 beside 1git and diff them);
 - the **command line is not git's**: it is Oro's args grammar, designed for 1git
   (`CLI.md`). `git log --oneline -n 5` is `1git -log --oneline --max 5`
-  (`MIGRATING-FROM-GIT.md`). git's own spelling still works in 0.24.0 behind a
-  deprecation warning (the transition shim) and is removed in 0.27.0.
+  (`MIGRATING-FROM-GIT.md`). git's own spelling worked in 0.24.0 to 0.26.0 behind a
+  deprecation warning (the transition shim); since 0.27.0 it is refused with a hint
+  naming the new line (`1git -migrate` prints it).
 
 Everything below describes behaviour. Where it quotes options, they are **git's
 spelling of the same thing**: translate with `1git -migrate 'git ...'` or the
@@ -25,8 +26,9 @@ table in `MIGRATING-FROM-GIT.md`. The oracle scripts do exactly that
 
 Exit status is 0, 1 (the command failed) or 2 (the line was not understood);
 git's 128 and 129 are 1. Forms of git's that were dropped on purpose are listed
-in `CLI.md` ("What is not in 1git"); the oracle runs them through the shim for
-this release and the checks go with the shim.
+in `CLI.md` ("What is not in 1git"); the oracle scripts still run them, through the program's internal
+git-grammar path (`M31GIT_INTERNAL_ARGV=1`, which `pull` re-runs itself by), so the
+command functions keep their checks although the command line no longer takes them.
 
 Historical goal (2026-10-14), kept for the record: "a perfect copy of git",
 usable day to day, so that `1git` can stand where `git` stands. It was a
@@ -101,7 +103,7 @@ deliberately differ.
   git's own): `1git -log --max 5`, `1git -commit --message x`. The command
   functions still take git's argv; `core/GIT_cli.m31` maps the parsed line onto
   it from one table (`core/GIT_clitable.m31`) and the same table rewrites git's
-  argv into ours (`-migrate`, the transition shim).
+  argv into ours (`-migrate`, and the hint on a refused git-style line).
 - **Behaviour is pinned by the oracle**: every command ships with a
   `scripts/compare.sh` case that runs real git beside it and diffs stdout,
   stderr class and exit status, plus the repository state afterwards (`fsck

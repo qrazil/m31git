@@ -177,22 +177,26 @@ porcelain`), `ls-files`, `config`, `blame`, `describe`, `grep`, `reflog`,
 1git -push --force                                   # with a lease
 ```
 
-## The transition from git's spelling
+## From git's spelling
 
-For one release (0.24.0), a first word that is a git command still works:
+git's argument form stopped working in 0.27.0 (it was deprecated in 0.24.0). A
+first word that is a git command gets the refusal every bare word gets, exit
+status 2, nothing run, and a one-line hint with the new spelling:
 
 ```
 $ 1git log --oneline -n 5
-1git: git-style arguments are deprecated; use '1git -log --oneline --max 5' (see 1git --help)
+1git: hint: git's argument form was removed in 0.27.0; the new spelling is '1git -log --oneline --max 5'
+1git: 'log' is a command, so it is written with a dash: '-log'
+usage: 1git [options] -<command> [...]
+try '1git --help' for more information
 ```
 
-The line is rewritten into the new grammar by the same table the parser is
-made from (`core/GIT_clitable.m31`) and runs the new way, with the new exit
-status. A line with an option 1git no longer has runs as git would, with git's
-exit status, and a warning that says so. The shim is deleted in 0.27.0.
-`1git -migrate 'git log --oneline -n 5'` prints the new line without running
-anything; with `--nul` it reads git's words from standard input and writes
-ours, which is how the oracle scripts call 1git (`scripts/lib_cli.sh`).
+A line with an option 1git no longer has gets the same refusal and a hint that
+says it has no equivalent. `1git -migrate 'git log --oneline -n 5'` prints the
+new line without running anything; with `--nul` it reads git's words from
+standard input and writes ours, which is how the oracle scripts call 1git
+(`scripts/lib_cli.sh`). The table that rewrites git's argv
+(`core/GIT_clitable.m31`) is the one the parser is made from.
 
 ## mgit
 

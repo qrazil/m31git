@@ -3,6 +3,20 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.27.0
+
+- **1git: git's argument form is gone** (deprecated since 0.24.0, removal promised
+  for 0.27.0). `1git log --oneline -n 5` is refused like any bare word (exit 2,
+  nothing runs) with a one-line hint naming the new spelling, `1git -log --oneline
+  --max 5`; a line with an option 1git no longer has gets a hint that says it has no
+  equivalent. `1git -migrate 'git ...'` stays and prints the new line. `pull` runs
+  merge, rebase and checkout again in git's grammar for itself, through
+  `M31GIT_INTERNAL_ARGV=1`, which is for the program's own re-runs and not a spelling
+  for people. The oracle scripts run the forms 1git no longer has through that
+  internal path, so the code behind them keeps its checks, and say how many. Tests: `tests/test_cli.sh` checks that each of the
+  old forms of `tests/cli_cases.txt` is refused with the hint `-migrate` gives, that
+  nothing runs, and that the new form runs.
+
 ## 0.26.0
 
 - **mgit: delete and rename a branch** (Branches mode, `docs/MGIT-MODES.md`). `D`

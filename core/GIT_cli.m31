@@ -11,8 +11,8 @@
 //     whole line is turned before the first command runs, so a mistake in the
 //     third is found before the first has done anything.
 //   * `from_git` is the same table read the other way: git's argv rewritten
-//     into ours. It is what `1git -migrate` prints, and what the transition
-//     shim runs for one release when the first word is a git command.
+//     into ours. It is what `1git -migrate` prints, and what the hint on a
+//     line in git's grammar (refused since 0.27.0) names.
 //
 // Several commands on one line run in the order typed and stop at the first
 // failure. A command that fails makes the program exit 1; a command line that
@@ -71,7 +71,7 @@ pub type Job {
 
 pub const str PROG = "1git";
 
-/// `0.26.0`, from the one place the version is written down.
+/// `0.27.0`, from the one place the version is written down.
 pub str version_line() {
     return GIT_transport.AGENT.substr(5, GIT_transport.AGENT.size);
 }
@@ -638,34 +638,33 @@ pub int run_line(Cli cli, args.Parsed parsed) {
 
 /// The whole program: `argv` is the command line without the program's name.
 pub int start(List<str> argv) {
-    List<str> line = argv;
+    // `M31GIT_INTERNAL_ARGV=1` is set by the program for the lines it writes
+    // itself in git's grammar (pull runs merge, rebase and checkout again, some
+    // with options the command line of 1git does not have). It is not a
+    // spelling for users: a line typed in git's grammar is refused below.
+    if (os.env("M31GIT_INTERNAL_ARGV").or("") == "1") {
+        return run_legacy(argv);
+    }
     Cli cli = build();
-    // `M31GIT_SHIM_QUIET`: set by the program for the lines it writes itself
-    // (pull runs itself again) and by the oracle scripts, which compare stderr
-    bool is_quiet = os.env("M31GIT_SHIM_QUIET").or("") != "";
     if (is_git_style(argv)) {
+        // git's grammar was read until 0.26.0 (deprecated since 0.24.0). Now it
+        // gets the refusal of any bare word, and a hint naming the new spelling.
         Env probe = environment(Option<str>.None, [], Option<str>.None, Option<str>.None);
         match (from_git(cli, probe, argv)) {
             case Ok(List<str> rewritten): {
-                if (!is_quiet) {
-                    io.eprint(PROG + ": git-style arguments are deprecated; use '" + PROG + " " + shell_line(rewritten) + "' (see " + PROG + " --help)");
-                }
-                line = rewritten;
+                io.eprint(PROG + ": hint: git's argument form was removed in 0.27.0; the new spelling is '" + PROG + " " + shell_line(rewritten) + "'");
             }
             case Err(str reason): {
-                if (!is_quiet) {
-                    io.eprint(PROG + ": git-style arguments are deprecated, and this line has no equivalent in the new command line (" + reason + "); running it as git would, until 0.27.0");
-                }
-                return run_legacy(argv);
+                io.eprint(PROG + ": hint: git's argument form was removed in 0.27.0, and this line has no equivalent in the new command line (" + reason + ")");
             }
         }
     }
-    args.Parsed parsed = cli.top.parse_or_exit(line, status: 2);
+    args.Parsed parsed = cli.top.parse_or_exit(argv, status: 2);
     return run_line(cli, parsed);
 }
 
-/// A line the old way, for the one release that still runs them when there is
-/// no rewrite: the command function with git's own argv and exit status.
+/// A line in git's grammar, for the program's own re-runs only (see `start`):
+/// the command function with git's own argv and exit status.
 int run_legacy(List<str> argv) {
     int index = 0;
     str dir = "";

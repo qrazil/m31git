@@ -39,15 +39,15 @@ bool has_object(str gitdir, str id) {
 
 // Run this program again as `<self> -C <start> <-c ...> <words...>` with
 // GIT_REFLOG_ACTION set; its exit status. The words are git's own grammar, which
-// 1git still reads for one release (the transition shim); M31GIT_SHIM_QUIET keeps
-// the shim from warning about a line the program wrote itself.
+// the command line no longer reads: M31GIT_INTERNAL_ARGV=1 tells the program
+// that this line is its own (some of these options have no spelling in 1git).
 int rerun(str start, List<str> overrides, str action, List<str> words) {
     List<str> self_args = os.arguments();
     str self = "1git";
     if (self_args.size() > 0) {
         self = self_args[0];
     }
-    List<str> command = ["sh", "-c", "GIT_REFLOG_ACTION=\"$1\"; export GIT_REFLOG_ACTION; M31GIT_SHIM_QUIET=1; export M31GIT_SHIM_QUIET; shift; exec \"$@\"", "sh", action, self, "-C", start];
+    List<str> command = ["sh", "-c", "GIT_REFLOG_ACTION=\"$1\"; export GIT_REFLOG_ACTION; M31GIT_INTERNAL_ARGV=1; export M31GIT_INTERNAL_ARGV; shift; exec \"$@\"", "sh", action, self, "-C", start];
     for (str entry in overrides) {
         if (entry.starts_with("--git-dir=") || entry.starts_with("--work-tree=")) {
             command.push(entry);

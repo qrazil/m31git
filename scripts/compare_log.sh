@@ -236,7 +236,7 @@ compare linear-sub "$WORK/fx/linear/src" log --name-only --oneline
 compare linear-sub "$WORK/fx/linear/src" log -p --oneline .
 
 if [ "$(fallback_count)" -ne 0 ]; then
-    echo "log: $(fallback_count) of the forms ran through the transition shim (options 1git's command line no longer has)"
+    echo "log: $(fallback_count) of the forms ran through git's grammar directly (options 1git's command line no longer has)"
 fi
 if [ "$bad" -eq 0 ]; then
     echo "log: all $n forms byte-identical to git"

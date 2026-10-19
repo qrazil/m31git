@@ -339,7 +339,7 @@ def fmt(t):
 
 def to_one_git(one, argv):
     """git's words as 1git's (`1git -migrate --nul`), so the timed run is the new
-    command line and not the transition shim; unchanged when there is no rewrite."""
+    command line (git's own form is refused); unchanged when there is no rewrite."""
     data = b"".join(a.encode() + b"\0" for a in argv)
     proc = subprocess.run([one, "-migrate", "--nul"], input=data, capture_output=True)
     if proc.returncode != 0:

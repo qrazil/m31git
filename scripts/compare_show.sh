@@ -216,7 +216,7 @@ compare linear-sub "$WORK/fx/linear/src" show HEAD -- .
 compare linear-sub "$WORK/fx/linear/src" show HEAD:main.c
 
 if [ "$(fallback_count)" -ne 0 ]; then
-    echo "show: $(fallback_count) of the forms ran through the transition shim (options 1git's command line no longer has)"
+    echo "show: $(fallback_count) of the forms ran through git's grammar directly (options 1git's command line no longer has)"
 fi
 if [ "$bad" -eq 0 ]; then
     echo "show: all $n forms byte-identical to git"

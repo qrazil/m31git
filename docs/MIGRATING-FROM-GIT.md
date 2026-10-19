@@ -1,8 +1,8 @@
 # Migrating from git to 1git
 
-`1git -migrate 'git log --oneline -n 5'` prints the line for you. For one
-release (0.24.0) `1git log --oneline -n 5` still runs, with a warning that
-prints the same line; the shim goes in 0.27.0. The grammar is in `CLI.md`: one
+`1git -migrate 'git log --oneline -n 5'` prints the line for you. Since 0.27.0
+`1git log --oneline -n 5` is refused (exit 2, nothing runs) with a hint that
+prints the same line; the git-style shim of 0.24.0 to 0.26.0 is gone. The grammar is in `CLI.md`: one
 dash is a command, two dashes an option, anything else data; paths after a
 revision are `--path`.
 

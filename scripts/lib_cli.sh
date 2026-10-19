@@ -7,9 +7,12 @@
 #
 # runs `1git` with the rewritten line and leaves its stdout, stderr and exit
 # status as they are. A git line that has no equivalent in the new command line
-# (an option 1git dropped) goes through the transition shim instead, which runs
-# it as git would and warns; those runs are counted in "$CLI_FALLBACKS" so a
-# suite can say how many forms are not yet on the new grammar.
+# (an option 1git dropped) cannot be typed to 1git any more, but the command
+# function still takes it: the line goes to the program's internal
+# git-grammar path (M31GIT_INTERNAL_ARGV=1, the one pull re-runs itself by), so
+# the oracle keeps checking what the code behind the command line does. Those
+# runs are counted in "$CLI_FALLBACKS" so a suite can say how many forms are not
+# reachable from the command line.
 #
 #   norm_rc <status>
 #
@@ -35,7 +38,7 @@ one_run() {
         return $?
     fi
     printf '%s\n' "$*" >> "$CLI_FALLBACKS"
-    M31GIT_SHIM_QUIET=1 "$bin" "$@"
+    M31GIT_INTERNAL_ARGV=1 "$bin" "$@"
 }
 
 # side_run <bin> <git args...>: real git as it is, 1git through one_run.

@@ -1,6 +1,6 @@
 # The command line of 1git, one case per option: the line in our grammar, the
 # argv of git's grammar it is handed to the command function as (`=`), and the
-# spellings git has for it that `1git -migrate` and the transition shim rewrite
+# spellings git has for it that `1git -migrate` rewrites
 # into the line above (`<`). tests/test_cli.sh runs all three ways and checks
 # that every option of every command's --help is in here.
 #

@@ -580,7 +580,7 @@ This is not politeness; these are things that measurably did not go wrong.
   placeholder lists the choices and whose membership `GIT_cli` checks itself, with the same wording as the
   module's own refusals. An error in a command prints the program's usage line, not that command's.
 - **Hard:** a value cannot start with a dash, so `--message "- item"` is `--message=- item`, and a path that starts with
-  one cannot be an operand at all (`-add -- -dash` has no spelling; the shim runs it as git).
+  one cannot be an operand at all (`-add -- -dash` has no spelling).
 - **Hard:** an option that takes a list swallows the operands after it, so the operands come first
   (`-log main --path src`); `GIT_cli.from_git` writes lists last.
 - **m31:** no `extend` on a `List`, no ternary, no literal in `.contains` (needs a declared type), `main` is a reserved name for a

@@ -281,6 +281,6 @@ fi
 
 if [ $bad -eq 0 ]; then
     echo "     $n status comparisons against git, all identical"
-    [ "$(fallback_count)" -eq 0 ] || echo "     ($(fallback_count) of them through the transition shim: forms 1git's command line no longer has)"
+    [ "$(fallback_count)" -eq 0 ] || echo "     ($(fallback_count) of them through git's grammar directly: forms 1git's command line no longer has)"
 fi
 exit $bad

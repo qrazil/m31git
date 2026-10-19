@@ -1,8 +1,8 @@
 # The command line of 1git and mgit (docs/CLI.md): every command's `--help`
 # against its golden text, the refusals with their messages and exit status,
 # every option of every command through the table (`cli_cases.txt`, both
-# directions), several commands on one line, the transition shim for every old
-# form, and mgit's flags under a pty.
+# directions), several commands on one line, the refusal of every old
+# (git-style) form with its hint, and mgit's flags under a pty.
 #
 # Sourced from `test.sh` (see `test_write.sh`): no `set`, `cd` or `trap` here;
 # `$WORK`, `build`, `note` and `bad` are `test.sh`'s. `tests/run_cli.sh` runs
@@ -214,37 +214,48 @@ if build git && build t_cli; then
     out=$(cd "$cli_work/dirrepo" && cli_env "$cli_one" --config log.abbrevCommit=true -log --max 1 --format %h 2>&1 | tr -d '\n' | wc -c | tr -d ' ')
     [ "$out" = 7 ] && note "cli: --config is git's -c" || bad "cli: --config" "$out"
 
-    # --- the transition shim: every old form, same result as the new form ---------------------
-    # the pairs come from cli_cases.txt: old line `<`, new line above it. Read-only forms
-    # are run in the fixture and the outputs compared; the changing ones in twin copies.
+    # --- git's argument form is refused (0.27.0): every old form, with the new spelling ---------
+    # Each old line is refused like any bare word (status 2, nothing on standard output, the
+    # repository untouched) with a one-line hint whose spelling is `-migrate`'s answer and
+    # runs, in a twin repository, as the new line it is paired with.
     cli_shim_total=0
     cli_shim_bad=0
-    cli_pair() { # <git line> <our line>: run both, same stdout, same state
-        local old=$1 new=$2 ra rb
+    cli_pair() { # <git line> <our line>
+        local old=$1 new=$2 ra rb hint want before
         cli_shim_total=$((cli_shim_total + 1))
         cli_fixture "$cli_work/twin-a"
         rm -rf "$cli_work/twin-b"
         cp -R "$cli_work/twin-a" "$cli_work/twin-b"
+        before=$(cli_state "$cli_work/twin-a")
         eval "set -- $old"
         (cd "$cli_work/twin-a" && cli_env "$cli_one" "$@" >"$cli_work/old.out" 2>"$cli_work/old.err" </dev/null)
         ra=$?
         eval "set -- $new"
         (cd "$cli_work/twin-b" && cli_env "$cli_one" "$@" >"$cli_work/new.out" 2>"$cli_work/new.err" </dev/null)
         rb=$?
-        sed "s#twin-[ab]#TWIN#g" "$cli_work/old.out" >"$cli_work/old.n"
-        sed "s#twin-[ab]#TWIN#g" "$cli_work/new.out" >"$cli_work/new.n"
-        if [ "$ra" != "$rb" ] || ! cmp -s "$cli_work/old.n" "$cli_work/new.n" || [ "$(cli_state "$cli_work/twin-a")" != "$(cli_state "$cli_work/twin-b" | sed "s#twin-b#twin-a#g")" ]; then
+        hint=$(sed -n "s/^1git: hint: git's argument form was removed in 0.27.0; the new spelling is '\(.*\)'\$/\1/p" "$cli_work/old.err")
+        want=$(cd "$cli_work/twin-a" && "$cli_one" -migrate "git $old" 2>/dev/null)
+        if [ "$ra" != 2 ] || [ -s "$cli_work/old.out" ]; then
             cli_shim_bad=$((cli_shim_bad + 1))
-            bad "cli shim: '$old' and '$new' differ" "status $ra / $rb" "$(diff "$cli_work/old.out" "$cli_work/new.out" | head -5)"
-        fi
-        if ! grep -qF "1git: git-style arguments are deprecated; use '1git " "$cli_work/old.err"; then
+            bad "cli refusal: '$old' ran or did not exit 2" "status $ra" "$(head -3 "$cli_work/old.err")"
+        elif [ -z "$hint" ] || [ "$hint" != "$want" ]; then
             cli_shim_bad=$((cli_shim_bad + 1))
-            bad "cli shim: no deprecation warning for '$old'" "$(head -3 "$cli_work/old.err")"
-        fi
-        if grep -qF "deprecated" "$cli_work/new.err"; then
+            bad "cli refusal: no hint naming the new spelling for '$old'" "wanted: $want" "$(head -3 "$cli_work/old.err")"
+        elif ! grep -q "^usage: 1git \[options\] -<command>" "$cli_work/old.err"; then
             cli_shim_bad=$((cli_shim_bad + 1))
-            bad "cli shim: the new form warns: '$new'" "$(head -3 "$cli_work/new.err")"
+            bad "cli refusal: '$old' lacks the usual refusal" "$(head -3 "$cli_work/old.err")"
+        elif [ "$(cli_state "$cli_work/twin-a")" != "$before" ]; then
+            cli_shim_bad=$((cli_shim_bad + 1))
+            bad "cli refusal: '$old' changed the repository"
         fi
+        if grep -qF "removed in 0.27.0" "$cli_work/new.err"; then
+            cli_shim_bad=$((cli_shim_bad + 1))
+            bad "cli refusal: the new form is refused: '$new'" "$(head -3 "$cli_work/new.err")"
+        fi
+        case $rb in
+            0 | 1) ;;
+            *) cli_shim_bad=$((cli_shim_bad + 1)); bad "cli: '$new' (the new form of '$old') exits $rb" "$(head -3 "$cli_work/new.err")" ;;
+        esac
     }
     # old argv and new argv, identical results (fixture: a.txt, b.txt, sub/c.txt, tag v1, branch side)
     cli_pair "status -sb" "-status --format short --branch"
@@ -294,28 +305,30 @@ if build git && build t_cli; then
     cli_pair "remote -v" "-remote --verbose"
     cli_pair "clean -n" "-clean --dry-run"
     cli_pair "worktree list" "-worktree"
-    note "cli shim: $cli_shim_total old forms give the new form's output and repository, each with one warning"
-    [ "$cli_shim_bad" = 0 ] || true
+    [ "$cli_shim_bad" = 0 ] && note "cli refusal: $cli_shim_total old forms are refused with the new spelling in a hint"
 
-    # global options of git before the command
+    # global options of git before the command are in the hint
     out=$(cd "$cli_work" && cli_env "$cli_one" -C dirrepo -c log.abbrevCommit=true log --max-count=1 --format=%h 2>"$cli_work/g.err")
-    if [ "${#out}" = 7 ] && grep -q "use '1git --dir dirrepo --config log.abbrevCommit=true -log --max 1 --format %h'" "$cli_work/g.err"; then
-        note "cli shim: -C and -c before the command are rewritten to --dir and --config"
+    if [ -z "$out" ] && grep -q "the new spelling is '1git --dir dirrepo --config log.abbrevCommit=true -log --max 1 --format %h'" "$cli_work/g.err"; then
+        note "cli refusal: -C and -c before the command are named as --dir and --config in the hint"
     else
-        bad "cli shim: global options" "$out" "$(cat "$cli_work/g.err")"
+        bad "cli refusal: global options" "$out" "$(cat "$cli_work/g.err")"
     fi
-    # no equivalent: runs as git would, with git's status, and says so
+    # no equivalent: refused too, and the hint says so; nothing runs
     out=$(cd "$cli_work/fx" && cli_env "$cli_one" log --no-walk --first-parent --abbrev-commit --oneline 2>"$cli_work/g.err")
     rc=$?
-    if [ "$rc" = 0 ] && grep -q "has no equivalent in the new command line" "$cli_work/g.err"; then
-        note "cli shim: a line with an option 1git dropped runs as git would, with a warning"
+    if [ "$rc" = 2 ] && [ -z "$out" ] && grep -q "has no equivalent in the new command line" "$cli_work/g.err" && grep -q "is a command, so it is written with a dash" "$cli_work/g.err"; then
+        note "cli refusal: a line with an option 1git dropped is refused, the hint says it has no equivalent"
     else
-        bad "cli shim: untranslatable line" "status $rc" "$(cat "$cli_work/g.err")"
+        bad "cli refusal: untranslatable line" "status $rc" "$(cat "$cli_work/g.err")"
     fi
-    # the shim is only for a first word that is a git command
+    # another bare word has no hint, only the usual refusal
     err=$("$cli_one" blame x 2>&1 >/dev/null)
     rc=$?
-    [ "$rc" = 2 ] && printf '%s' "$err" | grep -qF "got 'blame'" && note "cli shim: another bare word is Oro's usual refusal" || bad "cli shim: bare unknown word" "status $rc: $err"
+    [ "$rc" = 2 ] && printf '%s' "$err" | grep -qF "got 'blame'" && ! printf '%s' "$err" | grep -q hint && note "cli refusal: another bare word is Oro's usual refusal, with no hint" || bad "cli refusal: bare unknown word" "status $rc: $err"
+    # the program's own re-runs (pull) are the one place git's grammar is read
+    out=$(cd "$cli_work/fx" && M31GIT_INTERNAL_ARGV=1 "$cli_one" log -n1 --format=%s 2>&1)
+    [ "$out" = second ] && note "cli: M31GIT_INTERNAL_ARGV=1 (set by pull for its own re-runs) reads git's grammar" || bad "cli: internal argv" "$out"
     # -migrate
     out=$("$cli_one" -migrate 'git log --oneline -n 5 -- a.txt')
     [ "$out" = "1git -log --oneline --max 5 --path a.txt" ] && note "cli: -migrate writes the new line" || bad "cli: -migrate" "$out"

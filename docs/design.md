@@ -353,7 +353,7 @@ dashes an option, anything else data. The commands of `1git` are one table
 (`core/GIT_clitable.m31`): the parser declarations, the translation to the argv
 of git's grammar that the command functions take (`GIT_cli.to_git`), and the
 rewrite of git's argv into ours (`GIT_cli.from_git`, behind `-migrate` and the
-one-release transition shim) are all read from it, so they cannot drift. The
+hint on a refused git-style line) are all read from it, so they cannot drift. The
 command bodies were not touched; the new layer is the argument handling and the
 dispatch of several commands on one line. `docs/CLI.md` is the surface and its
 reasons, `docs/MIGRATING-FROM-GIT.md` the table, `tests/cli_cases.txt` one case
