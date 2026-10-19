@@ -201,13 +201,22 @@ standard input and writes ours, which is how the oracle scripts call 1git
 ## mgit
 
 ```
-mgit [PATH] [--mouse on|off]
+mgit [PATH] [--mouse on|off] [--sync on|off|auto]
 mgit --help | --version | --completions bash|zsh|fish
 ```
 
 `PATH` is where the repository's work tree is (default `.`). The mouse is on
 unless `M31GIT_MOUSE=off` or `mgit.mouse = off` says otherwise; `--mouse`
-overrides both. It is a value because Oro refuses `--no-mouse`. Exit status: 0
+overrides both. It is a value because Oro refuses `--no-mouse`.
+
+`--sync` is synchronized output (DEC mode 2026): each frame is written between
+`CSI ? 2026 h` and `l` so the terminal shows it whole, never half drawn. `auto`
+(the default) asks the terminal (DECRQM) unless it is Terminal.app or a dumb one
+(`TERM` unset, `dumb`, `linux`, `vt100`, `ansi`), which are never asked; `on` asks
+whatever the terminal is; `off` never asks. Whichever it is, frames are written
+inside the markers only after the terminal has answered that it has the mode, so
+a terminal that stays silent gets the frames it always got. It has no short form:
+one-letter spellings are for what is typed daily (see above). Exit status: 0
 after a normal quit, 1 when there is no repository or no terminal, 2 for a
 command line that is not understood.
 

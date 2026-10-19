@@ -16,21 +16,45 @@
 // reload of unchanged rows redraws nothing (the renderer diffs frames).
 
 import ui.GIT_ui_core;
-import ui.GIT_ui_loop;
 import core.GIT_watch;
+import tui.app.TUI_app;
 
-/// Idle ticks (250 ms each) between polls.
+/// The timer's period, `Loop.animate_ms`: one idle tick.
+pub const int TICK_MS = 250;
+/// Idle ticks (`TICK_MS` each) between polls.
 pub const int POLL_TICKS = 4;
 
 pub type AutoRefresh {
     GIT_ui_core.Core core;
     GIT_watch.Watcher watcher;
     int idle = 0;
+    /// An event was handled since the last tick: the tick is not idle.
+    bool is_busy = false;
     /// How many reloads this has caused; the tests read it.
     pub int reloads = 0;
 }
 
-pub bool AutoRefresh.did_change_on_tick() {
+/// Tell the ticker an event was handled. `Loop.run_with` calls its `Ticker`
+/// every `animate_ms` whether or not keys arrive; the loop this replaced called
+/// it only when a read timed out, and the polling is meant for an idle
+/// program, so a tick that follows an event is not counted.
+pub void AutoRefresh.note_input() {
+    is_busy = true;
+}
+
+/// The `TUI_app.Ticker`: `Redraw` when the repository changed behind our back.
+pub TUI_app.Action AutoRefresh.tick(int elapsed_ms) {
+    if (is_busy) {
+        is_busy = false;
+        return TUI_app.Action.Continue;
+    }
+    if (did_change_on_idle_tick()) {
+        return TUI_app.Action.Redraw;
+    }
+    return TUI_app.Action.Continue;
+}
+
+bool AutoRefresh.did_change_on_idle_tick() {
     idle = idle + 1;
     if (idle < POLL_TICKS) {
         return false;

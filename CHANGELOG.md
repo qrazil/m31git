@@ -3,6 +3,64 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.28.0
+
+- **mgit runs on tui's `Loop.run_with`; the private copy of the loop is gone.** `ui/GIT_ui_loop.m31`
+  (`GIT_ui_loop.run`, a copy of `TUI_app.Loop.run` that called a ticker on every timed-out read) is deleted;
+  nothing else used it. The new `ui/GIT_ui_app.m31` has `App`, which is the `Widget`, the `Handler` and the
+  `Ticker` the loop is given, and `make_loop`, the loop's settings in one place (public, tested by
+  `tests/t_loop.m31`). The migration follows tui-markdown 0.6.0 and 0.7.0 (`MDV_cli.make_loop`,
+  `App`/`Screen` as `Handler`/`Ticker`/`AfterFrame`, tui's README mapping table). Built and tested against
+  m31 v0.6.0 and tui v0.11.0 (e156723), the pin of 0.27.1.
+  - **Nothing changes for a user with `--sync off`; the bytes written to the terminal are identical to
+    0.27.1.** Checked by driving both binaries through the same 21 scripted sessions under a pty
+    (577 steps, 259532 bytes of output per binary; the harness is not in the repository, it needs a 0.27.1
+    binary to compare with): every
+    mode and its help and palette, the unified and side-by-side diff (keys, wheel, click, widening, staging
+    lines), the merge, cherry-pick, revert and rebase overlays and flows (a conflict, the resolution view, an
+    abort, a continue), the stash menu and list, the tag and branch menus, the commit flow (sign-off, amend,
+    discard), the editor suspended and resumed (a stand-in `$EDITOR` that succeeds, one that fails, one that
+    does not exist), a branch name taken from `$EDITOR`, mouse reports in every mode, resizes (also to
+    5x20 and 50x200), bracketed paste, bursts of keys, the idle auto-refresh after files changed behind its
+    back, escape sequences and a lone Escape, `--mouse off`, an 8x30 and a 60x220 terminal. Run twice on
+    0.27.1 the output is itself identical byte for byte (the clock is fixed with a preloaded shim so commit
+    ids repeat; after a step that changes the repository the harness waits for the auto-refresh to land).
+    With `--sync off` the 0.28.0 output is the same file (same md5, 8a1666c48d9dedddf5dade2eacdd6091).
+  - What the settings keep: one frame per event (`drain_events` 0: tui's default is one frame per burst of
+    events, which would write fewer, different frames); mouse reports asked for with
+    `should_report_raw_mouse` (the same modes as before, no motion) and passed to mgit's own hit testing
+    unrouted; no paste, focus or keyboard mode; `tick_ms` 250 ms; keys from standard input; the terminal
+    given back and taken again around `$EDITOR`, which still ends the loop and starts it again.
+  - **Two differences in time, not in bytes.** (1) A lone Escape is resolved when a read times out. With the
+    timer on, a read waits only until the next tick when that is sooner, so Escape takes 1 to 250 ms where it
+    took 250 ms; a terminal link that delivers the bytes of one key (an arrow key's three) more than a few
+    milliseconds apart can read it as an Escape followed by two characters. `Loop` has no knob for the wait on
+    a held prefix apart from `tick_ms`, which the timer undercuts (a finding for tui). (2) The auto-refresh
+    ticker (`GIT_ui_autorefresh`) is now called by the loop's timer every 250 ms, also while keys arrive; a tick
+    that follows an event is not counted, so the repository is still polled after about a second of idleness
+    (every `POLL_TICKS`-th idle tick), but the phase of the polls is that of the timer, not of the last key.
+    `AutoRefresh.did_change_on_tick()` is now `AutoRefresh.tick(elapsed_ms)` (it answers a
+    `TUI_app.Action`, `Redraw` when the repository changed) and `AutoRefresh.note_input()` is new.
+- **`--sync on|off|auto`: synchronized output (DEC mode 2026).** Each frame is written between `CSI ? 2026 h`
+  and `l`, so a terminal shows it whole, never half drawn. It is on by default (`auto`): the terminal is asked
+  (DECRQM) when mgit starts and the markers are written only after it answers that it has the mode (set,
+  reset or permanently set); a terminal that does not answer, or answers "not recognised", gets the frames it
+  got before. `auto` does not ask Terminal.app (it prints queries it does not know) or a dumb terminal
+  (`TERM` unset, `dumb`, `linux`, `vt100`, `ansi`); `on` asks every terminal; `off` asks none and writes
+  the bytes of 0.27.1. Oro's grammar: a value option (`--no-sync` is refused, like `--no-mouse`), and no short
+  form, because one-letter forms are for what is typed daily (`docs/CLI.md`). With the answer given and the
+  markers and the question taken out of the output, the 0.28.0 bytes are again those of 0.27.1 (checked on
+  the same 21 sessions). `mgit --help`, `docs/CLI.md` and the completions (`bash`, `zsh`, `fish`) list it;
+  the help and the three scripts are goldens now (`tests/golden/cli/mgit-*.txt`).
+- **No clipboard.** mgit has no copy action, so `Loop.copy` (OSC 52) is not used.
+- **For programs that use m31git as a library:** `ui.GIT_ui_loop` is gone (it was a copy of tui's loop; use
+  `TUI_app.Loop.run_with` with a `Ticker`); `GIT_ui_autorefresh.AutoRefresh` implements `TUI_app.Ticker`
+  (`tick`) instead of `GIT_ui_loop.Ticker` (`did_change_on_tick`).
+- Tests: `tests/t_loop.m31` (the loop's settings against the loop 0.27.1 ran on, the `--sync` rule, the
+  ticker's idle counting), `tests/pty_loop.py` (the bytes under a pty: entry and exit, `--sync` asked or not,
+  markers only after an answer, the editor handoff), `tests/test_loop.sh`, and the mgit help and completion
+  goldens in `tests/test_cli.sh`.
+
 ## 0.27.1
 
 - **A program can now depend on m31git together with tui 0.9 or later.** m31 allows one

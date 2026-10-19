@@ -363,6 +363,23 @@ fi
 if [ ! -x "$WORK/mgit" ]; then
     bash scripts/build.sh -o "$WORK/mgit" >"$WORK/cli_mgit_build.log" 2>&1 || bad "cli: scripts/build.sh (mgit)" "$(tail -5 "$WORK/cli_mgit_build.log")"
 fi
+# mgit's --help and its three completion scripts against their goldens (UPDATE_GOLDEN=1 rewrites them)
+if [ -x "$WORK/mgit" ]; then
+    cli_mgit_ok=1
+    for cli_mgit_golden in "help --help" "completions-bash --completions bash" "completions-zsh --completions zsh" "completions-fish --completions fish"; do
+        cli_mgit_name=${cli_mgit_golden%% *}
+        cli_mgit_args=${cli_mgit_golden#* }
+        # shellcheck disable=SC2086
+        "$WORK/mgit" $cli_mgit_args >"$cli_work/mgit_golden.out" 2>&1 </dev/null
+        if [ "${UPDATE_GOLDEN:-}" = 1 ]; then
+            cp "$cli_work/mgit_golden.out" "$cli_gold/mgit-$cli_mgit_name.txt"
+        elif ! cmp -s "$cli_work/mgit_golden.out" "$cli_gold/mgit-$cli_mgit_name.txt"; then
+            cli_mgit_ok=0
+            bad "cli golden: mgit $cli_mgit_args" "$(diff "$cli_gold/mgit-$cli_mgit_name.txt" "$cli_work/mgit_golden.out" | head -10)"
+        fi
+    done
+    [ "$cli_mgit_ok" = 1 ] && note "cli: mgit --help and its bash, zsh and fish completions match tests/golden/cli/mgit-*.txt"
+fi
 if [ -x "$WORK/mgit" ] && command -v python3 >/dev/null; then
     if out=$(python3 -I tests/pty_cli.py "$WORK/mgit" "$WORK/cli_pty" 2>&1); then
         note "cli: mgit flags under a pty -- $(printf '%s\n' "$out" | tail -1)"

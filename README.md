@@ -80,6 +80,7 @@ bash scripts/build.sh git.m31         # the command line client -> ./1git
 bash scripts/build.sh                 # mgit.m31 -> ./mgit   (-o name to rename)
 ./mgit                         # run from a repository's own top level
 ./mgit ../other --mouse off    # PATH is the repository; --mouse on|off beats M31GIT_MOUSE (see --help)
+./mgit --sync off              # synchronized output (DEC 2026): on, off, or auto (the default; asked only after the terminal answers)
 ```
 
 | file | what it is |
@@ -116,8 +117,8 @@ bash scripts/build.sh                 # mgit.m31 -> ./mgit   (-o name to rename)
 | `GIT_ui_blame.m31`, `GIT_ui_filelog.m31`, `GIT_ui_show.m31` | `B` blame overlay (with `,` re-blame at the parent), `H` file history, and the read-only commit view both open; `GIT_ui_blame.target` works out which file and revision `B`/`H` mean |
 | `GIT_ui_highlight.m31` | syntax colours outside the diff view: whether they are on (`NO_COLOR`, `M31GIT_SYNTAX`, `mgit.syntax`), the language of a path, and `DiffText`/`ConflictText`, which walk a diff or a conflicted file line by line with the lexer's state carried |
 | `GIT_ui_undo.m31`, `GIT_ui_tags.m31`, `GIT_ui_prompt.m31` | the `Z` undo/redo overlay, the `T` tag list, and the one-line text prompt it uses |
-| `GIT_ui_loop.m31`, `GIT_ui_autorefresh.m31` | `TUI_app.Loop.run` with an idle `Ticker`, and the ticker that polls `GIT_watch` about once a second and reloads the outline when something changed behind the client's back |
-| `mgit.m31` | the interactive client's thin driver: parses a path, runs `TUI_app.Loop` |
+| `GIT_ui_app.m31`, `GIT_ui_autorefresh.m31` | what `TUI_app.Loop.run_with` is given (`App`: the `Widget`, `Handler` and `Ticker`), the loop's settings (`make_loop`) and the `--sync` rule; and the ticker that polls `GIT_watch` about once a second while idle and reloads the outline when something changed behind the client's back |
+| `mgit.m31` | the interactive client's thin driver: parses a path, runs `TUI_app.Loop.run_with` |
 | `GIT_http_fetch.m31` | git's smart-HTTP protocol, v0 fetch/clone only: pkt-line framing, the ref advertisement, want/have negotiation, side-band-64k demultiplexing, and pack checksum verification, over `lib/https.m31` (`http://` and `https://`) |
 | `GIT_wire.m31` | the transport-independent half of git's wire protocol over a duplex `Stream { read(n), write(bytes), close() }`: pkt-lines, the advertisement, want/have negotiation in rounds of at most 256 haves with the ACKs read between rounds (no write/write deadlock on a long-lived channel), side-band demultiplexing, pack verification, and the receive-pack command and report-status; `GIT_http_fetch.m31` and `GIT_http_push.m31` are now HTTP adapters over it |
 | `GIT_remote.m31` | where a remote lives: URL parsing (https, http, `ssh://`, scp-like, local) checked against the argv git hands to ssh, `url.<base>.insteadOf` / `pushInsteadOf` rewriting, `sq_quote` and the `git-upload-pack` / `git-receive-pack` command, a pure `~/.ssh/config` subset resolver, pure `known_hosts` matching (plain, `[host]:port`, wildcard, hashed via HMAC-SHA1, markers surfaced), no I/O; the ssh transport that uses it is `GIT_ssh_transport.m31` |

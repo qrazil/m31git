@@ -364,3 +364,31 @@ bytes are fed to a terminal 40 columns wider), and that the screen equals a full
 repaint (the terminal is resized and put back, and the two screens compared
 cell by cell, style included). It needs `pyte`; without it the checks are
 skipped.
+
+### The loop, and what it asks of the terminal
+
+Since 0.28.0 mgit runs on tui's own loop (`TUI_app.Loop.run_with`); the private copy
+it used to run (`GIT_ui_loop.run`) is gone. `ui/GIT_ui_app.m31` has what the loop is
+given (`App`: the frame, the key handler and the idle ticker) and every setting
+(`make_loop`, tested by `tests/t_loop.m31`). What is the same as before, and checked
+byte for byte against 0.27.1 under a pty (see the CHANGELOG): one frame per key or
+mouse report, the first frame and every resized one written in full, the rest as a
+diff against the frame before; mouse reports asked for with the same modes (wheel
+and clicks, no motion) and handled by mgit's own hit testing, not routed by the loop;
+no paste, focus or keyboard mode is asked for; the terminal is given back before
+`$EDITOR` runs and taken again after it. One difference, in time only: a lone Escape
+is resolved when a read times out, and with the idle timer on a read waits at most until
+the next tick (every 250 ms), so Escape takes 1 to 250 ms where it always took 250 ms;
+so a link that delivers the bytes of one key (an arrow key's three) more than a few
+milliseconds apart can be read as an Escape and two characters sooner than before
+(see the CHANGELOG).
+
+What is new is `--sync on|off|auto`: synchronized output (DEC mode 2026). The
+terminal is asked once (DECRQM) when mgit starts and frames go between the markers
+only after it answered that it has the mode, so a terminal that does not know it
+never sees them. `auto`, the default, asks every terminal except Terminal.app (it
+prints queries it does not know) and a dumb one (`TERM` unset, `dumb`, `linux`,
+`vt100`, `ansi`); `on` asks whatever the terminal is; `off` writes the bytes of 0.27.1.
+The idle ticker (the repository polled about once a second, see `GIT_ui_autorefresh`)
+now runs from the loop's timer, every 250 ms; a tick that follows a key does not
+count as idle, so the polling still happens only while nothing is typed.

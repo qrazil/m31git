@@ -1,0 +1,92 @@
+// What mgit hands to `TUI_app.Loop.run_with`, and the loop's settings.
+//
+// 0.28.0 deleted the private copy of the loop (`GIT_ui_loop.run`) and runs on
+// tui's `Loop.run_with`, as tui-markdown 0.6.0 did. `App` is the three things
+// the loop asks for: a `Widget` (`render`), a `Handler` (`handle`) and a
+// `Ticker` (`tick`, the repository polling of `GIT_ui_autorefresh`).
+// `make_loop` is every setting in one place, public so a test can look at it.
+//
+// What the settings keep from the loop this replaced (checked byte for byte
+// against 0.27.1 under a pty, see CHANGELOG 0.28.0):
+//   - one frame per event (`drain_events` 0): the loop used to draw after every
+//     event it read, and tui's default is one frame per burst;
+//   - `tick_ms` is 250 ms, as before. A lone Escape is resolved when a read times
+//     out, and with the timer on a read waits only until the next tick when that is
+//     sooner, so Escape is resolved between 1 and 250 ms after it (it was always 250);
+//   - mouse reports are asked for with `should_report_raw_mouse` and reach
+//     `State.handle` as they arrive: mgit does its own hit testing, so the loop
+//     routes nothing, and no motion is asked for;
+//   - no paste, focus or keyboard mode is asked for.
+
+import term;
+import os;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+import ui.GIT_client;
+import ui.GIT_ui_autorefresh;
+
+pub type App {
+    pub GIT_client.State state;
+    pub GIT_ui_autorefresh.AutoRefresh refresher;
+}
+
+/// `TUI_widget.Widget`: one frame.
+pub void App.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    state.draw(buffer, area);
+}
+
+/// `TUI_app.Handler`: one key, mouse report or reply.
+pub TUI_app.Action App.handle(term.Event event) {
+    refresher.note_input();
+    return state.handle(event);
+}
+
+/// `TUI_app.Ticker`: every `GIT_ui_autorefresh.TICK_MS`.
+pub TUI_app.Action App.tick(int elapsed_ms) {
+    return refresher.tick(elapsed_ms);
+}
+
+/// The client, and the ticker that keeps it in step with the repository.
+pub App open(GIT_client.State state) {
+    return App(state, GIT_ui_autorefresh.open(state.core()));
+}
+
+/// Whether `--sync auto` asks the terminal about synchronized output: every
+/// terminal but Terminal.app (it prints what it does not know) and a dumb one
+/// (`TERM` unset, `dumb`, `linux`, `vt100`, `ansi`), which get plain frames. A
+/// terminal that is asked and does not answer gets plain frames too: the loop
+/// writes inside the markers only after the reply.
+pub bool is_sync_askable(str term_name, str term_program) {
+    if (term_program == "Apple_Terminal") {
+        return false;
+    }
+    return !(term_name == "" || term_name == "dumb" || term_name == "linux" || term_name == "vt100" || term_name == "ansi");
+}
+
+/// What `--sync` comes to: `on` and `off` are what they say, `auto` (and no
+/// flag) is `is_sync_askable` of the environment given.
+pub bool is_sync_wanted(str mode, str term_name, str term_program) {
+    if (mode == "on") {
+        return true;
+    }
+    if (mode == "off") {
+        return false;
+    }
+    return is_sync_askable(term_name, term_program);
+}
+
+/// `is_sync_wanted` for this process's environment.
+pub bool is_sync_wanted_here(str mode) {
+    return is_sync_wanted(mode, os.env("TERM").or(""), os.env("TERM_PROGRAM").or(""));
+}
+
+/// The loop's settings. `is_mouse`: ask for mouse reports. `is_sync`: ask the
+/// terminal whether it has synchronized output and, if it says so, write every
+/// frame inside the markers.
+pub TUI_app.Loop make_loop(bool is_mouse, bool is_sync) {
+    TUI_app.Loop loop = TUI_app.Loop(should_report_raw_mouse: is_mouse, should_sync: is_sync);
+    loop.animate_ms = GIT_ui_autorefresh.TICK_MS;
+    loop.drain_events = 0;
+    return loop;
+}

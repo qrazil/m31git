@@ -406,6 +406,7 @@ source tests/test_stash.sh
 
 source tests/test_uikeys.sh
 source tests/test_modes.sh
+source tests/test_loop.sh
 
 # --- branch listing and checkout, against real git as the oracle ----------
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """mgit's command line under a real pty: the repository path operand, `--mouse
-on|off` against `M31GIT_MOUSE`, the refusals and their exit status.
+on|off` against `M31GIT_MOUSE`, `--sync`'s refusals (its bytes are `pty_loop.py`'s),
+the refusals and their exit status.
 
     python3 tests/pty_cli.py <mgit-binary> <scratch-dir>
 
@@ -112,16 +113,20 @@ check("the path operand opens that repository", b"main" in out, repr(out[:300]))
 
 o, e, rc = plain(["--mouse", "sideways", repo])
 check("--mouse sideways: refused with 2", rc == 2 and "needs one of on, off" in e, e)
+o, e, rc = plain(["--sync", "sideways", repo])
+check("--sync sideways: refused with 2", rc == 2 and "needs one of on, off, auto" in e, e)
+o, e, rc = plain(["--no-sync", repo])
+check("--no-sync: refused with 2", rc == 2 and "--no-sync" in e, e)
 o, e, rc = plain(["--no-mouse", repo])
 check("--no-mouse: refused with 2 and a suggestion", rc == 2 and "--no-mouse" in e, e)
 o, e, rc = plain(["-h"])
 check("-h: refused, names --help", rc == 2 and "--help" in e, e)
 o, e, rc = plain(["--help"])
-check("--help: usage, exit 0", rc == 0 and "usage: mgit" in o and "--mouse on|off" in o, o)
+check("--help: usage, exit 0", rc == 0 and "usage: mgit" in o and "--mouse on|off" in o and "--sync on|off|auto" in o, o)
 o, e, rc = plain(["--version"])
 check("--version", rc == 0 and re.match(r"mgit \d+\.\d+\.\d+", o) is not None, o)
 o, e, rc = plain(["--completions", "bash"])
-check("--completions bash", rc == 0 and "--mouse" in o, o[:100])
+check("--completions bash", rc == 0 and "--mouse" in o and "--sync" in o, o[:100])
 o, e, rc = plain([os.path.join(scratch, "elsewhere")])
 check("not a repository: exit 1", rc == 1 and "not a git repository" in e, e + str(rc))
 o, e, rc = plain([repo])

@@ -1,0 +1,154 @@
+// What mgit hands to tui's `Loop.run_with` (`ui/GIT_ui_app.m31`): the loop's
+// settings, the `--sync` rule, and the ticker's idle counting. No terminal.
+//
+//   ./t_loop <gitdir> <worktree>
+//
+// The settings are checked against the loop 0.27.1 ran on (a `TUI_app.Loop`
+// built with `should_report_mouse`, driven by the private `GIT_ui_loop.run`
+// copy): the bytes written on entry and on the way out are the same, and so are
+// the fields the loop's reads and redraws depend on. The ticker is checked on
+// the repository the caller made: `<worktree>/a.txt` is tracked.
+//
+// Prints one `<case> ok` or `<case> FAIL ...` line per check and a last line
+// `N checks, M failed`.
+
+import io;
+import os;
+import fs;
+import term;
+import tui.app.TUI_app;
+import tui.app.TUI_diff;
+import tui.core.TUI_mouse;
+import ui.GIT_client;
+import ui.GIT_ui_app;
+import ui.GIT_ui_autorefresh;
+
+type Counter {
+    int checks = 0;
+    int failed = 0;
+}
+
+void Counter.check(str name, bool is_ok, str detail) {
+    checks = checks + 1;
+    if (is_ok) {
+        print(name + " ok");
+    } else {
+        failed = failed + 1;
+        print(name + " FAIL " + detail);
+    }
+}
+
+Counter counter = Counter();
+
+/// What 0.27.1 built: `TUI_app.Loop(should_report_mouse: is_mouse)`.
+TUI_app.Loop before(bool is_mouse) {
+    return TUI_app.Loop(should_report_mouse: is_mouse);
+}
+
+// --- the bytes on entry and on the way out
+TUI_app.Loop with_mouse = GIT_ui_app.make_loop(true, false);
+TUI_app.Loop without_mouse = GIT_ui_app.make_loop(false, false);
+counter.check("entry, mouse on: the bytes 0.27.1 wrote", with_mouse.enter_sequence() == before(true).enter_sequence(), with_mouse.enter_sequence());
+counter.check("exit, mouse on: the bytes 0.27.1 wrote", with_mouse.leave_sequence() == before(true).leave_sequence(), with_mouse.leave_sequence());
+counter.check("entry, mouse off: the bytes 0.27.1 wrote", without_mouse.enter_sequence() == before(false).enter_sequence(), without_mouse.enter_sequence());
+counter.check("exit, mouse off: the bytes 0.27.1 wrote", without_mouse.leave_sequence() == before(false).leave_sequence(), without_mouse.leave_sequence());
+counter.check("mouse on asks for the mouse and for no motion", with_mouse.enter_sequence().contains(term.MOUSE_ON) && !with_mouse.enter_sequence().contains(TUI_mouse.HOVER_ON), "");
+counter.check("mouse off asks for none", !without_mouse.enter_sequence().contains(term.MOUSE_ON), "");
+counter.check("the reports are raw: the loop routes none", with_mouse.should_report_raw_mouse && !with_mouse.should_report_mouse && !with_mouse.should_report_hover, "");
+counter.check("no paste, focus or keyboard mode is asked for", !with_mouse.should_report_paste && !with_mouse.should_report_focus && !with_mouse.should_disambiguate_keys && !with_mouse.should_try_modify_other_keys, "");
+// --- what the reads and redraws depend on
+counter.check("one frame per event, as the loop 0.27.1 ran", with_mouse.drain_events == 0, str(with_mouse.drain_events));
+counter.check("a read waits at most 250 ms (the longest a held Escape waits), as before", with_mouse.tick_ms == 250 && before(true).tick_ms == 250, str(with_mouse.tick_ms));
+counter.check("the timer is the 250 ms idle tick", with_mouse.animate_ms == 250 && GIT_ui_autorefresh.TICK_MS == 250, str(with_mouse.animate_ms));
+counter.check("scroll regions and the managed cursor are off, as before", !with_mouse.should_scroll && !with_mouse.should_manage_cursor, "");
+counter.check("keys come from standard input", with_mouse.input_fd == 0, str(with_mouse.input_fd));
+// --- --sync
+counter.check("sync off asks nothing", !without_mouse.enter_sequence().contains(TUI_diff.SYNC_QUERY) && !without_mouse.should_sync, "");
+TUI_app.Loop synced = GIT_ui_app.make_loop(true, true);
+counter.check("sync on asks the terminal (DECRQM), after the mouse modes", synced.enter_sequence() == before(true).enter_sequence() + TUI_diff.SYNC_QUERY, synced.enter_sequence());
+counter.check("sync on: the exit begins with the markers' end, then what 0.27.1 wrote", synced.leave_sequence() == TUI_diff.SYNC_END + before(true).leave_sequence(), synced.leave_sequence());
+counter.check("sync on is not sync until the terminal answers", !synced.is_sync, "");
+counter.check("auto: asked of xterm", GIT_ui_app.is_sync_wanted("auto", "xterm-256color", ""), "");
+counter.check("auto: asked of iTerm2, kitty, a screen", GIT_ui_app.is_sync_wanted("auto", "xterm-256color", "iTerm.app") && GIT_ui_app.is_sync_wanted("auto", "xterm-kitty", "") && GIT_ui_app.is_sync_wanted("auto", "screen", ""), "");
+counter.check("auto: never asked of Terminal.app", !GIT_ui_app.is_sync_wanted("auto", "xterm-256color", "Apple_Terminal"), "");
+counter.check("auto: never asked of a dumb terminal", !GIT_ui_app.is_sync_wanted("auto", "dumb", "") && !GIT_ui_app.is_sync_wanted("auto", "linux", "") && !GIT_ui_app.is_sync_wanted("auto", "vt100", "") && !GIT_ui_app.is_sync_wanted("auto", "ansi", "") && !GIT_ui_app.is_sync_wanted("auto", "", ""), "");
+counter.check("on is on, whatever the environment says", GIT_ui_app.is_sync_wanted("on", "dumb", "Apple_Terminal"), "");
+counter.check("off is off, whatever the environment says", !GIT_ui_app.is_sync_wanted("off", "xterm-256color", "iTerm.app"), "");
+// --- the ticker: idle ticks, not ticks that follow an event
+List<str> argv = os.arguments();
+if (argv.size() < 3) {
+    io.eprint("usage: t_loop <gitdir> <worktree>");
+    os.exit(2);
+}
+str worktree = argv[2];
+GIT_client.State state = GIT_client.State.open(argv[1], worktree);
+state.reload();
+GIT_ui_app.App app = GIT_ui_app.open(state);
+int polls = GIT_ui_autorefresh.POLL_TICKS;
+bool is_quiet = true;
+for (int tick in 0 .. polls - 1) {
+    match (app.tick(250)) {
+        case Continue: {
+        }
+        case Redraw: {
+            is_quiet = false;
+        }
+        case Quit: {
+            is_quiet = false;
+        }
+    }
+}
+counter.check("idle ticks with nothing changed: Continue", is_quiet && app.refresher.reloads == 0, str(app.refresher.reloads));
+match (io.write(fs.join(worktree, "a.txt"), "one\nand a good deal more than before\n")) {
+    case Ok(_): {
+    }
+    case Err(io.Error error): {
+        counter.check("the fixture file is written", false, error.to_str());
+    }
+}
+// an event, then a tick: that tick is not idle, so the poll is not reached yet
+match (app.handle(term.Event.Paste("x"))) {
+    case Continue: {
+    }
+    case Redraw: {
+    }
+    case Quit: {
+    }
+}
+bool is_early = false;
+match (app.tick(250)) {
+    case Continue: {
+    }
+    case Redraw: {
+        is_early = true;
+    }
+    case Quit: {
+        is_early = true;
+    }
+}
+counter.check("a tick after an event does not count and does not poll", !is_early && app.refresher.reloads == 0, str(app.refresher.reloads));
+bool did_redraw = false;
+match (app.tick(250)) {
+    case Continue: {
+    }
+    case Redraw: {
+        did_redraw = true;
+    }
+    case Quit: {
+    }
+}
+counter.check("the poll comes with the POLL_TICKS-th idle tick, and a change is a redraw", did_redraw && app.refresher.reloads == 1, str(app.refresher.reloads));
+did_redraw = false;
+for (int tick in 0 .. polls) {
+    match (app.tick(250)) {
+        case Continue: {
+        }
+        case Redraw: {
+            did_redraw = true;
+        }
+        case Quit: {
+        }
+    }
+}
+counter.check("a repository that did not change again is not a redraw", !did_redraw && app.refresher.reloads == 1, str(app.refresher.reloads));
+print(str(counter.checks) + " checks, " + str(counter.failed) + " failed");
