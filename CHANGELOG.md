@@ -31,6 +31,12 @@ Each release's changes in one place (the details are in `README.md` and
   refused: a.txt has local changes (HEAD stays)`, `an untracked file is
   in the way of x.txt`). Library: `GIT_checkout.Error.Dirty` and `UntrackedCollision`
   carry the path, and a stash apply names the untracked file in the way.
+- **mgit and 1git: a refused stash apply or pop names the file.** `GIT_stash.Error.Dirty`
+  carries the path (`local changes to a.txt would be overwritten -- ...`; the first of
+  the paths when a merge names several), as the checkout's refusals do.
+- `scripts/compare_net_ssh.sh` starts its `sshd` with `-D`, so the script's own trap kills
+  it (the daemonizing server outlived every run), and keeps `PerSourcePenalties no` where
+  the installed sshd accepts it, as `tests/test_ssh.sh` does.
 - Tests: `tests/pty_modes.py` (leftover message, notice memory, the named files),
   `tests/t_modes.m31` (palette rows without a key), `tests/test_checkout.sh` (the file
   in the message).

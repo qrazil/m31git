@@ -248,6 +248,7 @@ def main():
     s.quit()
     r = run(theirs, "stash", "apply", "-q")
     check("apply: refused over local changes, as git does", r.returncode != 0 and "refused" in t, t)
+    check("apply: the refusal names the file with the local changes", "local changes to a.txt would be overwritten" in " ".join(t.split()), t)
     same("apply refused leaves the repository as it was", ours, theirs)
 
     # a pop that has to merge and conflicts: git's conflicted state, the stash kept

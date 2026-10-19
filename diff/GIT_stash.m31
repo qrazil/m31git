@@ -99,8 +99,9 @@ pub enum Error {
     /// The stash was applied by a merge that left these paths in conflict; the
     /// stash is kept.
     Conflicts(List<str>);
-    /// Local changes to a file the stash would overwrite.
-    Dirty;
+    /// Local changes to a file the stash would overwrite: its path ("" when the
+    /// merge named none).
+    Dirty(str);
     /// An untracked file is where the stash would write one.
     UntrackedExists(str);
     /// The index has changed a file the stash staged, in another way.
@@ -136,7 +137,7 @@ pub List<str> Error.conflicted_paths() {
         case NotAStash: {
             return [];
         }
-        case Dirty: {
+        case Dirty(_): {
             return [];
         }
         case BranchExists: {
@@ -180,8 +181,11 @@ pub str Error.to_str() {
         case Conflicts(List<str> paths): {
             return "conflicts in " + paths.join(", ") + " -- the stash entry is kept in case you need it again";
         }
-        case Dirty: {
-            return "local changes would be overwritten -- commit or discard them first";
+        case Dirty(str path): {
+            if (path == "") {
+                return "local changes would be overwritten -- commit or discard them first";
+            }
+            return "local changes to " + path + " would be overwritten -- commit or discard them first";
         }
         case UntrackedExists(str path): {
             return path + " already exists (untracked) -- move it away first";
@@ -343,8 +347,8 @@ Result<bool, Error> write_index(str gitdir, GIT_index.Index index) {
 
 Error from_checkout(GIT_checkout.Error error) {
     match (error) {
-        case Dirty(_): {
-            return Error.Dirty;
+        case Dirty(str path): {
+            return Error.Dirty(path);
         }
         case UntrackedCollision(str path): {
             return Error.UntrackedExists(path);
@@ -1096,13 +1100,21 @@ pub Result<str, Error> drop(str gitdir, int number) {
 
 // --- apply -----------------------------------------------------------------------
 
+// The first of the paths that block, "" when there is none.
+str first_of(List<str> paths) {
+    if (paths.size() == 0) {
+        return "";
+    }
+    return paths[0];
+}
+
 Error from_merge(GIT_merge.Error error) {
     match (error) {
-        case IndexDirty(_): {
-            return Error.Dirty;
+        case IndexDirty(List<str> paths): {
+            return Error.Dirty(first_of(paths));
         }
-        case LocalChanges(_): {
-            return Error.Dirty;
+        case LocalChanges(List<str> paths): {
+            return Error.Dirty(first_of(paths));
         }
         case Checkout(GIT_checkout.Error inner): {
             return from_checkout(inner);

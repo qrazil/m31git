@@ -192,7 +192,7 @@ str kind_of(GIT_stash.Error error) {
         case Conflicts(_): {
             return "Conflicts";
         }
-        case Dirty: {
+        case Dirty(_): {
             return "Dirty";
         }
         case UntrackedExists(_): {

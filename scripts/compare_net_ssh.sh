@@ -40,7 +40,15 @@ StrictModes no
 AllowUsers $USERNAME
 SetEnv PATH=/usr/libexec/git-core:/usr/bin:/bin
 EOF
-"$SSHD" -f "$WORK/sshd_config" -e 2> "$WORK/sshd.log" &
+# OpenSSH 9.8+ drops a source that keeps disconnecting before auth; older sshd
+# rejects the keyword, so keep it only if this one accepts it.
+printf 'MaxStartups 1000\nPerSourcePenalties no\n' >> "$WORK/sshd_config"
+if ! "$SSHD" -t -f "$WORK/sshd_config" > /dev/null 2>&1; then
+    grep -v '^PerSourcePenalties' "$WORK/sshd_config" > "$WORK/sshd_config.new" && mv "$WORK/sshd_config.new" "$WORK/sshd_config"
+fi
+# -D: stay in the foreground, so $! is the server itself and the trap kills it
+# (a daemonizing sshd leaves the process the shell started, and the server outlives the script)
+"$SSHD" -D -f "$WORK/sshd_config" -e 2> "$WORK/sshd.log" &
 SSHD_PID=$!
 trap 'kill $SSHD_PID 2>/dev/null' EXIT
 for i in $(seq 50); do (echo > /dev/tcp/127.0.0.1/$PORT) 2> /dev/null && break; sleep 0.1; done
