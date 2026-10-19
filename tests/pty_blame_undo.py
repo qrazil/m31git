@@ -89,6 +89,10 @@ def run(ctx):
             rows_ok = False
             detail = "missing %r %r in\n%s" % (prefix, text, t)
     check("blame: every line shows the commit git blame attributes it to", rows_ok and len(expected) == 5, detail)
+    # tui 0.9.1 draws a control character as its Control Picture: a line's own
+    # newline must not reach the cell as one (a row ending in U+240A)
+    check("blame: no row ends in a Control Picture (the line terminator is not drawn)",
+          not any("\u2400" <= c <= "\u2421" for c in t), t)
     s.send("G")
     s.send("\r")
     t = s.text()

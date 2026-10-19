@@ -2,4 +2,4 @@
 name m31git
 version 0.27.0
 syntax https://github.com/qrazil/syntax e49e01c32fba95d23b9ad2267a3cfaa967fb758b
-tui https://github.com/qrazil/tui 57a63afb4ce800975d7e00aa08a090780a5cdde3
+tui https://github.com/qrazil/tui e156723d54245c54fe284aea9dcf449e89fad897

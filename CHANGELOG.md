@@ -3,6 +3,26 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## Unreleased
+
+- **tui is pinned to v0.11.0** (`e156723`, was v0.8.0, `57a63af`); `syntax` stays at
+  `e49e01c`, the commit tui v0.11.0 itself pins, so the two resolve to one source. What
+  the newer tui does to mgit's screens, checked against every pty suite, the unit
+  programs that import tui and the side-by-side goldens:
+  - 0.9.1 draws a control character in a cell as its Control Picture (U+2400 + code)
+    where it used to write the raw byte. The blame overlay put each file line, newline
+    included, in a cell, so every row would have ended in a visible `U+240A`; the overlay
+    now cuts the line terminator (`GIT_ui_blame.without_eol`). Every other screen was
+    scanned for Control Pictures across the pty suites and has none.
+  - 0.9.0 to 0.11.0's other changes (emoji and ZWJ width fixes, a skin tone after a text
+    base, synchronized output, OSC 52/8, keyboard protocols, the after-frame hook) are
+    opt-in or touch only clusters of uncertain width; mgit enables none of them.
+    Synchronized output is not turned on: mgit runs its own copy of the loop
+    (`GIT_ui_loop.run`), so it is not a one-line opt-in.
+  - **Golden changes: none.** `tests/golden/sbs` and `tests/golden/cli` are byte for byte
+    what they were.
+- Tests: `tests/pty_blame_undo.py` checks that no blame row holds a Control Picture.
+
 ## 0.27.0
 
 - **1git: git's argument form is gone** (deprecated since 0.24.0, removal promised

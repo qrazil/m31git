@@ -262,7 +262,7 @@ pub void BlameOverlay.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
         }
         str prefix = TUI_text.truncate(margin_text(lines[index], index + 1, number_width), inner.width);
         int used = buffer.set_str(inner.x, inner.y + row, prefix, over, max: inner.width);
-        str code = lines[index].text.utf8().or("(not UTF-8)");
+        str code = without_eol(lines[index].text.utf8().or("(not UTF-8)"));
         GIT_ui_syntax.draw(buffer, inner.x + used, inner.y + row, inner.width - used, code, syntax.classes(index), TUI_style.Style(), host.is_dark, over: over);
         row = row + 1;
     }
@@ -287,6 +287,19 @@ str BlameOverlay.margin_text(GIT_blame.Line line, int number, int number_width) 
 
 pub List<GIT_ui_core.Hint> BlameOverlay.hints() {
     return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_BLAME);
+}
+
+// A file's line comes with its terminator; tui 0.9.1 draws a control character as its
+// Control Picture, so the row would end in the symbol for a newline.
+str without_eol(str text) {
+    str out = text;
+    if (out.ends_with("\n")) {
+        out = out.substr(0, out.size() - 1);
+    }
+    if (out.ends_with("\r")) {
+        out = out.substr(0, out.size() - 1);
+    }
+    return out;
 }
 
 // `text` cut or space-filled to exactly `width` columns.
