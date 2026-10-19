@@ -431,6 +431,15 @@ pub Result<Summary, Error> checkout(str gitdir, str worktree, str target_commit_
                 case Checksum: {
                     return Result<Summary, Error>.Err(Error.Index(error));
                 }
+                case RequiredExtension: {
+                    return Result<Summary, Error>.Err(Error.Index(error));
+                }
+                case Locked: {
+                    return Result<Summary, Error>.Err(Error.Index(error));
+                }
+                case Changed: {
+                    return Result<Summary, Error>.Err(Error.Index(error));
+                }
             }
         }
     }
@@ -1170,6 +1179,15 @@ Result<GIT_index.Index, Error> load_index(str gitdir) {
                     return Result<GIT_index.Index, Error>.Err(Error.Index(error));
                 }
                 case Checksum: {
+                    return Result<GIT_index.Index, Error>.Err(Error.Index(error));
+                }
+                case RequiredExtension: {
+                    return Result<GIT_index.Index, Error>.Err(Error.Index(error));
+                }
+                case Locked: {
+                    return Result<GIT_index.Index, Error>.Err(Error.Index(error));
+                }
+                case Changed: {
                     return Result<GIT_index.Index, Error>.Err(Error.Index(error));
                 }
             }

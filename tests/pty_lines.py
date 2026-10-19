@@ -183,6 +183,21 @@ def run_case(binpath, root, case, view, action):
         ls_ours, _, _ = git(fx, "ls-files", "-s")
         ls_orc, _, _ = git(oracle, "ls-files", "-s")
         check(name + ": index equals git apply --cached", ls_ours == ls_orc, "ours %r git %r\n%s" % (ls_ours, ls_orc, shown))
+        # What git itself believes of the entry, asked before any command that may refresh the
+        # index: the size and flags of `ls-files --debug` (git trusts a non-zero size that differs
+        # from the file's, so the 4294967295 a size of -1 wrote made `status` say MM for a file equal
+        # to its entry), and the porcelain status.
+        def entry_fields(repo):
+            out, _, _ = git(repo, "ls-files", "--debug")
+            return [line.strip() for line in out.split("\n") if line.strip().startswith("size:")]
+
+        def porcelain(repo):
+            out, _, _ = git(repo, "status", "--porcelain")
+            return "\n".join(line for line in out.split("\n") if "p.patch" not in line)
+
+        check(name + ": entry size and flags equal git apply --cached's", entry_fields(fx) == entry_fields(oracle), "ours %r git %r" % (entry_fields(fx), entry_fields(oracle)))
+        st_ours, st_orc = porcelain(fx), porcelain(oracle)
+        check(name + ": git status --porcelain agrees", st_ours == st_orc, "ours %r git %r" % (st_ours, st_orc))
         dc_ours, _, _ = git(fx, "diff", "--cached")
         dc_orc, _, _ = git(oracle, "diff", "--cached")
         check(name + ": git diff --cached agrees", dc_ours == dc_orc, "ours %r git %r" % (dc_ours, dc_orc))

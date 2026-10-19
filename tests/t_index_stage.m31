@@ -84,6 +84,18 @@ match (GIT_index.read(git_directory)) {
                 io.eprint("read: " + error.to_str());
                 os.exit(1);
             }
+            case RequiredExtension: {
+                io.eprint("read: " + error.to_str());
+                os.exit(1);
+            }
+            case Locked: {
+                io.eprint("read: " + error.to_str());
+                os.exit(1);
+            }
+            case Changed: {
+                io.eprint("read: " + error.to_str());
+                os.exit(1);
+            }
         }
     }
 }

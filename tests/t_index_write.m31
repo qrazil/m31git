@@ -1,0 +1,77 @@
+// The index writer under the conditions the shell test sets up around it.
+//
+//   t_index_write set <gitdir> <mode-octal> <blob-id> <path>
+//       what mgit does to stage a blob: read the index, replace `path`'s entry
+//       with `GIT_index.without_stat`, write it back
+//   t_index_write set-after <gitdir> <mode-octal> <blob-id> <path>
+//       the same, but after the index is read it prints `read` and waits for
+//       its standard input to end, so the test can let git write in between
+//   t_index_write rewrite <gitdir>
+//       read the index and write it straight back
+//
+// Prints `ok` and exits 0, or prints `error: <what the index module says>` and
+// exits 1.
+
+import core.GIT_index;
+import io;
+import os;
+
+List<str> argv = os.arguments();
+if (argv.size() < 3) {
+    io.eprint("usage: t_index_write set|set-after|rewrite <gitdir> ...");
+    os.exit(2);
+}
+str command = argv[1];
+str git_directory = argv[2];
+GIT_index.Index index = GIT_index.Index([]);
+match (GIT_index.read(git_directory)) {
+    case Ok(GIT_index.Index read_index): {
+        index = read_index;
+    }
+    case Err(GIT_index.Error error): {
+        print("error: " + error.to_str());
+        os.exit(1);
+    }
+}
+if (command == "set" || command == "set-after") {
+    if (argv.size() < 6) {
+        io.eprint("usage: t_index_write set <gitdir> <mode-octal> <blob-id> <path>");
+        os.exit(2);
+    }
+    if (command == "set-after") {
+        match (io.stdout().write("read\n".to_bytes())) {
+            case Ok(_): {
+            }
+            case Err(_): {
+            }
+        }
+        match (io.stdin().read_all()) {
+            case Ok(_): {
+            }
+            case Err(_): {
+            }
+        }
+    }
+    int mode = 0;
+    for (int i in 0 .. argv[3].size()) {
+        mode = mode * 8 + (argv[3].byte_at(i) - '0');
+    }
+    bytes path = argv[5].to_bytes();
+    List<GIT_index.Entry> kept = [];
+    for (GIT_index.Entry entry in index.entries) {
+        if (entry.path != path) {
+            kept.push(entry);
+        }
+    }
+    kept.push(GIT_index.without_stat(mode, argv[4], path));
+    index.entries = kept;
+}
+match (GIT_index.write(git_directory, index)) {
+    case Ok(_): {
+        print("ok");
+    }
+    case Err(GIT_index.Error error): {
+        print("error: " + error.to_str());
+        os.exit(1);
+    }
+}

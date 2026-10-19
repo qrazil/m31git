@@ -28,7 +28,7 @@
 // Which two files the view compares depends on the section, as in
 // `DiffLayer.show_diff_current`: unstaged = index vs working tree, staged =
 // HEAD vs index, untracked = nothing vs working tree. A partly staged index
-// entry gets size -1 and zeroed times, the same "never matches a stat"
+// entry gets size 0 and zeroed times, the same "never matches a stat"
 // rule `did_set_index_blob` uses, so `status` re-hashes it.
 
 import text.diff;
@@ -495,7 +495,8 @@ pub bool LinesLayer.did_unstage_lines(bytes path, Picked picked) {
 }
 
 /// The index entry for `path` now names a fresh blob of `content` with `mode`
-/// and a stat that never matches (size -1, no times), so `status` re-hashes it.
+/// and no stat snapshot (size 0, no times: what `git update-index --cacheinfo`
+/// writes), so `status` re-hashes it.
 pub bool LinesLayer.did_put_index_blob(bytes path, bytes content, int mode, str said) {
     str blob_id = "";
     match (GIT_object.write_blob(gitdir, content)) {
@@ -508,7 +509,7 @@ pub bool LinesLayer.did_put_index_blob(bytes path, bytes content, int mode, str 
         }
     }
     GIT_index.Index index = GIT_ui_model.read_index(gitdir);
-    GIT_ui_model.replace_entry(index, GIT_index.Entry(0, 0, 0, 0, 0, 0, mode, 0, 0, -1, blob_id, 0, false, path));
+    GIT_ui_model.replace_entry(index, GIT_index.without_stat(mode, blob_id, path));
     match (GIT_index.write(gitdir, index)) {
         case Ok: {
             message = said;

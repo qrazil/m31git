@@ -260,11 +260,12 @@ pub void OutlineLayer.unstage_path(bytes relative_path) {
         case Some(str tid): {
             match (GIT_ui_model.find_in_tree(gitdir, tid, relative_path)) {
                 case Some(GIT_object.Entry entry): {
-                    // size: -1 can never equal a real `fs.stat` size (always
-                    // >= 0), so `GIT_status.status`'s mtime/size shortcut always
-                    // re-hashes this entry instead of trusting a snapshot
-                    // that was never actually taken.
-                    GIT_index.Entry restored = GIT_index.Entry(0, 0, 0, 0, 0, 0, entry.mode, 0, 0, -1, entry.id, 0, false, relative_path);
+                    // no stat snapshot was taken: times 0 and size 0 (what `git
+                    // update-index --cacheinfo` writes) never match a real
+                    // file's mtime, so `status` re-hashes this entry; git reads
+                    // a size of 0 as "look at the content", where any other size
+                    // that differs it would trust as a change.
+                    GIT_index.Entry restored = GIT_index.without_stat(entry.mode, entry.id, relative_path);
                     GIT_ui_model.replace_entry(index, restored);
                 }
                 case None: {
@@ -698,9 +699,9 @@ pub void OutlineLayer.unstage_all() {
             case Some(str tid): {
                 match (GIT_ui_model.find_in_tree(gitdir, tid, delta.path)) {
                     case Some(GIT_object.Entry entry): {
-                        // size: -1 can never equal a real `fs.stat` size, so the
-                        // next `status` re-hashes this entry (see `unstage_path`).
-                        GIT_ui_model.replace_entry(index, GIT_index.Entry(0, 0, 0, 0, 0, 0, entry.mode, 0, 0, -1, entry.id, 0, false, delta.path));
+                        // no stat snapshot: the next `status` re-hashes this entry
+                        // (see `unstage_path`).
+                        GIT_ui_model.replace_entry(index, GIT_index.without_stat(entry.mode, entry.id, delta.path));
                         is_restored = true;
                     }
                     case None: {

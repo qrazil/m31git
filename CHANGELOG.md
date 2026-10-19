@@ -22,6 +22,38 @@ Each release's changes in one place (the details are in `README.md` and
   - **Golden changes: none.** `tests/golden/sbs` and `tests/golden/cli` are byte for byte
     what they were.
 - Tests: `tests/pty_blame_undo.py` checks that no blame row holds a Control Picture.
+- **The index writer follows git's lock protocol** (`GIT_index.write`). It takes
+  `index.lock`, writes the new index there and renames it over `index`; if the lock
+  exists it writes nothing, leaves the lock alone and says `index.lock exists`
+  (`GIT_index.Error.Locked`). An index that git or another process wrote after this
+  program read it is not overwritten (`Error.Changed`, "changed by another process").
+  The language has no exclusive create (`O_EXCL`), so the lock is taken with a
+  symbolic link, the one exclusive and atomic create there is, and the finished file is
+  renamed over the link; git sees a lock either way. Where links cannot be made
+  the lock is a plain file made after a check, which is not exclusive.
+- **mgit and 1git wrote an entry size of -1**, which the file stores as 4294967295; git
+  trusts a non-zero size that differs from the file's, so a fully staged hunk showed as
+  `MM` (and a staged new file as `AM`). Every such entry (`GIT_index.without_stat`: staging
+  a hunk or lines, unstaging, a stash that restores the index) now has times and size 0,
+  byte for byte what `git update-index --cacheinfo` and `git apply --cached` write.
+- **Entry flags and the other index extensions** (what the writer does, written down in
+  `GIT_index.m31` and `docs/GIT-COMPAT.md`): intent-to-add and skip-worktree flags were
+  dropped by every write (an `add -N` entry became a staged empty file); they are kept
+  now, and an index with one is written as version 3, as git does. `TREE`, `UNTR`, `FSMN`,
+  `EOIE` and `IEOT` are dropped (git rebuilds them); `REUC` is dropped too, which costs
+  `git checkout -m -- <path>` and `git update-index --unresolve` a resolved conflict.
+  dev, ino, uid and gid stay 0 (the library has no way to read them), which costs git one
+  re-hash. A split index (`link`) or a sparse index (`sdir`) used to be read as if the
+  file held every entry and was then overwritten; it is refused when read
+  (`Error.RequiredExtension`).
+- Tests: `tests/test_index_write.sh` (and `tests/run_index_write.sh` for it alone)
+  builds twin repositories from one byte copy, does the operation with real git and with
+  this program and compares the entries byte for byte (`tests/oracles/index_entries.py`),
+  `ls-files --debug`, `status --porcelain`, `write-tree` and `fsck --strict`; it also
+  covers an existing `index.lock`, a dangling one, git writing the index in the middle,
+  extended flags, the dropped extensions, a split index and `1git add` under a lock.
+  `tests/pty_lines.py` compares each staged entry's size and the porcelain status with
+  `git apply --cached`'s.
 
 ## 0.27.0
 

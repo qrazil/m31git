@@ -359,6 +359,9 @@ pub type Idx {
     // `core.ignorecase`: the folded names of the index (see `GIT_icase`)
     pub bool is_icase = false;
     pub GIT_icase.Names names = GIT_icase.Names();
+    // the checksum of the index file this was read from (`GIT_index.Index.base`),
+    // so `write_idx` does not overwrite an index someone wrote since
+    pub bytes base = [];
 }
 
 /// Index case-folding on, from the entries read so far.
@@ -514,6 +517,7 @@ pub IdxLoaded read_idx(str gitdir) {
     Idx idx = Idx();
     match (GIT_index.read(gitdir)) {
         case Ok(GIT_index.Index index): {
+            idx.base = index.base;
             for (GIT_index.Entry entry in index.entries) {
                 match (entry.path.utf8()) {
                     case Some(str path): {
@@ -559,6 +563,18 @@ pub IdxLoaded read_idx(str gitdir) {
                     io.eprint("fatal: " + error.to_str());
                     return IdxLoaded(false, idx);
                 }
+                case RequiredExtension: {
+                    io.eprint("fatal: " + error.to_str());
+                    return IdxLoaded(false, idx);
+                }
+                case Locked: {
+                    io.eprint("fatal: " + error.to_str());
+                    return IdxLoaded(false, idx);
+                }
+                case Changed: {
+                    io.eprint("fatal: " + error.to_str());
+                    return IdxLoaded(false, idx);
+                }
             }
         }
     }
@@ -575,7 +591,9 @@ List<GIT_index.Entry> smudged(Idx idx) {
     List<GIT_index.Entry> out = [];
     for (GIT_index.Entry entry in idx.list()) {
         if (entry.stage == 0 && entry.mtime_s >= now - 1 && entry.size > 0 && !entry.is_gitlink()) {
-            out.push(GIT_index.Entry(entry.ctime_s, entry.ctime_ns, entry.mtime_s, entry.mtime_ns, entry.dev, entry.ino, entry.mode, entry.uid, entry.gid, 0, entry.id, entry.stage, entry.is_assume_valid, entry.path));
+            GIT_index.Entry smudge = GIT_index.Entry(entry.ctime_s, entry.ctime_ns, entry.mtime_s, entry.mtime_ns, entry.dev, entry.ino, entry.mode, entry.uid, entry.gid, 0, entry.id, entry.stage, entry.is_assume_valid, entry.path);
+            smudge.ext_flags = entry.ext_flags;
+            out.push(smudge);
         } else {
             out.push(entry);
         }
@@ -584,7 +602,9 @@ List<GIT_index.Entry> smudged(Idx idx) {
 }
 
 pub bool write_idx(str gitdir, Idx idx) {
-    match (GIT_index.write(gitdir, GIT_index.Index(smudged(idx)))) {
+    GIT_index.Index written = GIT_index.Index(smudged(idx));
+    written.base = idx.base;
+    match (GIT_index.write(gitdir, written)) {
         case Ok(_): {
             return true;
         }

@@ -48,20 +48,35 @@
 // real git to read -- slower on its next `status`, in exchange for every
 // entry it has to re-hash once, never wrong.
 //
-// Versions 3 and 4 are not implemented. A version-3 entry differs from
-// version 2 only by an extra 16-bit "extended flags" word when the entry's
-// own extended bit is set, which costs nothing extra to read, so it is
-// handled here regardless of the file's declared version. Version 4's
-// whole-file prefix-compressed pathnames are a different entry encoding
+// Version 3 is read and written: an entry whose own extended bit is set has one
+// more 16-bit word (`Entry.ext_flags`: intent-to-add 0x2000, skip-worktree
+// 0x4000), kept as it was read, and an index with any such entry is written as
+// version 3 -- git's own rule -- while one with none stays version 2. Version
+// 4's whole-file prefix-compressed pathnames are a different entry encoding
 // altogether and are refused (`Error.BadVersion`) rather than misread --
 // silently decoding a v4 index as if it were v2 would produce entries with
-// wrong, truncated paths, which is worse than refusing to open it. Every
-// extension block (`TREE`, `REUC`, `UNTR`, `link`, and any this has never
-// heard of) is skipped by its own declared size rather than by name, and
-// none is written back: a round trip through this module keeps the entries
-// and drops every extension, cache-tree included, which only ever costs real
-// git a cache it can rebuild.
-
+// wrong, truncated paths, which is worse than refusing to open it.
+//
+// Extensions. An extension is skipped by its own declared size, and the ones
+// whose signature starts with a capital letter are optional by git's own rule
+// (a reader that does not know one ignores it): `TREE` (the cache-tree),
+// `REUC` (resolve-undo), `UNTR` (the untracked cache), `FSMN` (fsmonitor),
+// `EOIE` and `IEOT` (offset tables). `write` writes none of them: a round trip
+// through this module keeps the entries and drops those, which only ever costs
+// real git a cache it can rebuild -- except `REUC`, whose loss means `git
+// checkout -m -- <path>` and `git update-index --unresolve` can no longer
+// bring back a conflict that was already resolved. An extension whose signature
+// starts with a lowercase letter is one a reader must understand: `link` (a
+// split index, whose entries live partly in `sharedindex.<id>`) and `sdir` (a
+// sparse index). The entries of such an index are not all in the file, so
+// `parse` refuses it (`Error.RequiredExtension`) instead of returning part of
+// the index and `write` writing that part over the rest.
+//
+// Writing follows git's lock protocol (`write`): `index.lock` is taken first,
+// the new index is written there and renamed over `index`, so git and this
+// never write at once, and an index that changed since `read` returned it is
+// not overwritten (`Error.Changed`).
+//
 import io;
 import fs;
 import core.GIT_repository;
@@ -89,6 +104,14 @@ pub enum Error {
     /// The trailing SHA-1 does not match the bytes before it: the index is
     /// corrupt.
     Checksum;
+    /// The index uses an extension a reader must understand (`link`, a split
+    /// index; `sdir`, a sparse index), so what is in the file is not all of it.
+    RequiredExtension;
+    /// `index.lock` exists: git, or another of this program, is writing the
+    /// index (or died while doing it).
+    Locked;
+    /// The index file is not the one `read` returned: someone wrote it since.
+    Changed;
 }
 
 pub str Error.to_str() {
@@ -113,6 +136,15 @@ pub str Error.to_str() {
         }
         case Checksum: {
             return "the index's trailing SHA-1 does not match its contents: the index is corrupt";
+        }
+        case RequiredExtension: {
+            return "the index uses a split or sparse index (a lowercase extension), which is not supported";
+        }
+        case Locked: {
+            return "index.lock exists: another git process may be running in this repository; if not, remove .git/index.lock";
+        }
+        case Changed: {
+            return "the index was changed by another process while this was working; nothing was written, try again";
         }
     }
 }
@@ -143,6 +175,10 @@ pub type Entry {
     pub int stage;
     pub bool is_assume_valid;
     pub bytes path;
+    /// The entry's extended flags word as it is on disk (0 when the entry has
+    /// none): 0x2000 intent-to-add (`git add -N`), 0x4000 skip-worktree. Not a
+    /// constructor argument, so an entry made by hand has none.
+    pub int ext_flags = 0;
 }
 
 /// Is the staged mode a symlink?
@@ -169,6 +205,10 @@ pub int Entry.cmp(Entry other) {
 /// The whole index: every staged entry, in the file's own order.
 pub type Index {
     pub List<Entry> entries;
+    /// The trailing checksum of the file this was read from, empty for an index
+    /// made by hand. `write` looks at it under the lock: a different checksum on
+    /// disk means someone wrote the index after `read`, and it is not overwritten.
+    pub bytes base = [];
 }
 
 /// The index of the repository whose git directory is `gitdir`. `NotFound`
@@ -229,12 +269,17 @@ pub Result<Index, Error> parse(bytes data, int raw) {
         if (size < 0 || next > end) {
             return Result<Index, Error>.Err(Error.BadExtension);
         }
+        if (data[offset] < 'A' || data[offset] > 'Z') {
+            return Result<Index, Error>.Err(Error.RequiredExtension);
+        }
         offset = next;
     }
     if (offset != end) {
         return Result<Index, Error>.Err(Error.Truncated);
     }
-    return Result<Index, Error>.Ok(Index(entries));
+    Index index = Index(entries);
+    index.base = want;
+    return Result<Index, Error>.Ok(index);
 }
 
 // One entry, and the offset just past it (already padded).
@@ -288,6 +333,9 @@ Result<Parsed, Error> read_entry(bytes data, int offset, int end, int raw) {
         return Result<Parsed, Error>.Err(Error.Truncated);
     }
     Entry entry = Entry(ctime_s, ctime_ns, mtime_s, mtime_ns, dev, ino, mode, uid, gid, size, id.hex(), stage, is_assume_valid, path);
+    if (is_extended) {
+        entry.ext_flags = be16(data, offset + 42 + raw);
+    }
     return Result<Parsed, Error>.Ok(Parsed(entry, next));
 }
 
@@ -310,34 +358,153 @@ pub Entry from_stat(bytes path, fs.Stat stat, bool is_link, str blob_id) {
     return Entry(seconds, nanoseconds, seconds, nanoseconds, 0, 0, mode, 0, 0, stat.size, blob_id, 0, false, path);
 }
 
-/// The index of the repository whose git directory is `gitdir`, written
-/// atomically: a temporary file beside `.git/index`, written whole, then
-/// renamed over it, so a reader never opens a half-written index and a crash
-/// mid-write leaves the old one intact -- the same discipline `GIT_refs.m31` uses
-/// for a ref.
+/// A stage-0 entry for a blob that is not a file `fs.stat` was asked about: no
+/// times, no device, no owner and a size of 0 -- exactly the entry `git
+/// update-index --cacheinfo` and `git apply --cached` write. Its mtime never
+/// matches a real file's, so the next `status` looks at the content, and git
+/// reads a size of 0 as "look at the content" where a non-zero size that
+/// differs from the file's it trusts as a change without looking.
+pub Entry without_stat(int mode, str blob_id, bytes path) {
+    return Entry(0, 0, 0, 0, 0, 0, mode, 0, 0, 0, blob_id, 0, false, path);
+}
+
+/// The index of the repository whose git directory is `gitdir`, written the
+/// way git writes it: `index.lock` is taken, the new index is written there,
+/// and the lock is renamed over `index` (which removes it), so a reader never
+/// opens a half-written index, a crash mid-write leaves the old one intact,
+/// and git and this never write at once. `Error.Locked` if the lock is already
+/// there: nothing is written and the other writer is not touched. An `Index`
+/// that `read` returned is also checked under the lock against the file on
+/// disk (`Index.base`): if someone wrote it since, `Error.Changed`.
+///
+/// The lock is taken with a symbolic link, because the language has no
+/// exclusive create (`O_EXCL`) and a symlink is the one exclusive, atomic
+/// create it does have: git's own `open(index.lock, O_CREAT|O_EXCL)` fails on
+/// it exactly as on a file. Once the new index is written beside it, the
+/// finished file is renamed over the link, which replaces it atomically (the
+/// name is never free), and that file is renamed over `index` as git does.
+/// Where links cannot be made (some FAT volumes) the lock is a plain file
+/// created after a check, which is not exclusive.
 pub Result<bool, Error> write(str gitdir, Index index) {
     bytes out = encode(index, GIT_hash.raw_length(gitdir));
     str path = fs.join(gitdir, "index");
+    str lock = path + ".lock";
     random.System rnd = random.system();
-    str temp = path + ".tmp" + rnd.hex(12);
+    str temp_name = "index.lock." + rnd.hex(12);
+    str temp = fs.join(gitdir, temp_name);
+    bool is_link_lock = true;
+    match (fs.symlink(temp_name, lock)) {
+        case Ok: {
+        }
+        case Err(io.Error error): {
+            if (is_exists(error)) {
+                return Result<bool, Error>.Err(Error.Locked);
+            }
+            is_link_lock = false;
+        }
+    }
+    if (!is_link_lock) {
+        if (fs.is_present(lock) || fs.is_link(lock)) {
+            return Result<bool, Error>.Err(Error.Locked);
+        }
+        match (io.write_bytes(lock, [])) {
+            case Ok: {
+            }
+            case Err(_): {
+                return Result<bool, Error>.Err(Error.Io);
+            }
+        }
+    }
+    if (index.base.size() > 0 && current_checksum(path, index.base.size()) != index.base) {
+        drop(lock);
+        return Result<bool, Error>.Err(Error.Changed);
+    }
     match (io.write_bytes(temp, out)) {
         case Ok: {
         }
         case Err(_): {
+            drop(temp);
+            drop(lock);
             return Result<bool, Error>.Err(Error.Io);
         }
     }
-    match (fs.rename(temp, path)) {
+    match (fs.rename(temp, lock)) {
+        case Ok: {
+        }
+        case Err(_): {
+            drop(temp);
+            drop(lock);
+            return Result<bool, Error>.Err(Error.Io);
+        }
+    }
+    match (fs.rename(lock, path)) {
         case Ok: {
             return Result<bool, Error>.Ok(true);
         }
         case Err(_): {
+            drop(lock);
             return Result<bool, Error>.Err(Error.Io);
         }
     }
 }
 
-/// `index`, as the bytes of a version-2 index file, checksum included -- no I/O,
+// Is `error` "a file by that name is already there"?
+bool is_exists(io.Error error) {
+    match (error) {
+        case AlreadyExists: {
+            return true;
+        }
+        case NotFound: {
+            return false;
+        }
+        case PermissionDenied: {
+            return false;
+        }
+        case IsDirectory: {
+            return false;
+        }
+        case NotADirectory: {
+            return false;
+        }
+        case NotEmpty: {
+            return false;
+        }
+        case InvalidUtf8: {
+            return false;
+        }
+        case Other(_): {
+            return false;
+        }
+    }
+}
+
+// Remove `path` and say nothing: the clean-up after a failed write has no one to tell.
+void drop(str path) {
+    match (fs.remove(path)) {
+        case Ok: {
+        }
+        case Err(_): {
+        }
+    }
+}
+
+// The last `raw` octets of the index file at `path` (its checksum), or an empty
+// run when it cannot be read.
+bytes current_checksum(str path, int raw) {
+    match (io.read_bytes(path)) {
+        case Ok(bytes data): {
+            if (data.size() < raw) {
+                return [];
+            }
+            return data.substr(data.size() - raw, data.size());
+        }
+        case Err(_): {
+            return [];
+        }
+    }
+}
+
+/// `index`, as the bytes of an index file (version 2, or 3 when an entry has extended flags), checksum included -- no I/O,
 /// so a test can check this against a fixture byte for byte without touching
 /// a filesystem. Entries are sorted into the format's own order first
 /// (`Entry.cmp`); a caller need not have sorted them.
@@ -346,7 +513,13 @@ pub bytes encode(Index index, int raw) {
     sorted.sort();
     bytes out = [];
     out.extend("DIRC".to_bytes());
-    push_be32(out, 2);
+    int version = 2;
+    for (Entry entry in sorted) {
+        if (entry.ext_flags != 0) {
+            version = 3;
+        }
+    }
+    push_be32(out, version);
     push_be32(out, sorted.size());
     for (Entry entry in sorted) {
         encode_entry(out, entry);
@@ -370,7 +543,15 @@ void encode_entry(bytes out, Entry entry) {
     push_be32(out, entry.mode);
     push_be32(out, entry.uid);
     push_be32(out, entry.gid);
-    push_be32(out, entry.size);
+    // the size is 32 bits on disk, and a size that is not known is 0, which git
+    // reads as "look at the content" (a non-zero size that differs is trusted
+    // as a change without looking: a -1 here read back as 4294967295 and made
+    // `git status` report MM)
+    int size = entry.size;
+    if (size < 0) {
+        size = 0;
+    }
+    push_be32(out, size & 0xFFFFFFFF);
     out.extend(hex_decode(entry.id));
     int namelen = entry.path.size();
     int lenfield = namelen;
@@ -381,7 +562,13 @@ void encode_entry(bytes out, Entry entry) {
     if (entry.is_assume_valid) {
         flags = flags | 0x8000;
     }
+    if (entry.ext_flags != 0) {
+        flags = flags | 0x4000;
+    }
     push_be16(out, flags);
+    if (entry.ext_flags != 0) {
+        push_be16(out, entry.ext_flags);
+    }
     out.extend(entry.path);
     int through_nul = out.size() - start + 1;
     int padded = through_nul;

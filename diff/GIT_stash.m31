@@ -1217,7 +1217,7 @@ GIT_index.Entry stat_entry(str worktree, str path, int mode, str id) {
 }
 
 GIT_index.Entry unknown_stat(int mode, str id, bytes path) {
-    return GIT_index.Entry(0, 0, 0, 0, 0, 0, mode, 0, 0, -1, id, 0, false, path);
+    return GIT_index.without_stat(mode, id, path);
 }
 
 Result<bool, Error> write_untracked(str gitdir, str worktree, str path, GIT_udiff.Leaf leaf) {
@@ -1295,7 +1295,7 @@ Result<GIT_merge.TreeMerge, Error> merge_index_changes(str gitdir, Parts parts, 
 }
 
 GIT_index.Entry opaque_blank() {
-    return GIT_index.Entry(0, 0, 0, 0, 0, 0, 0, 0, 0, -1, "", 0, false, "".to_bytes());
+    return GIT_index.Entry(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, false, "".to_bytes());
 }
 
 /// `git stash apply` for the stash commit `id`. See the module header.
@@ -1462,7 +1462,7 @@ pub Result<Applied, Error> apply_reporting(str gitdir, str worktree, str id, boo
         if (is_same_leaf(have, now) || have.id == "") {
             continue;
         }
-        GIT_index.Entry kept = original.get(path).or(GIT_index.Entry(0, 0, 0, 0, 0, 0, have.mode, 0, 0, -1, have.id, 0, false, path.to_bytes()));
+        GIT_index.Entry kept = original.get(path).or(GIT_index.without_stat(have.mode, have.id, path.to_bytes()));
         if (now.id == "") {
             final_entries.set(path, kept);
         } else {

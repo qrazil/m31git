@@ -331,9 +331,26 @@ Known divergences and gaps (everything else listed above matches):
   (CRLF content is stored and written as is); no sparse checkout, no
   submodules (a gitlink is kept, never entered), no linked-worktree checks
   (`branch -d` of a branch checked out elsewhere is not refused).
-- The index is written without the cached-tree, untracked-cache and fsmonitor
-  extensions and without inode/device/ownership data, so real git
-  re-checks content of files once.
+- The index is written without the cached-tree (`TREE`), untracked-cache
+  (`UNTR`), fsmonitor (`FSMN`) and offset-table extensions and without
+  inode/device/ownership data, so real git re-checks content of files once;
+  it is also written without resolve-undo (`REUC`), so `git checkout -m --
+  <path>` and `git update-index --unresolve` cannot bring back a conflict that
+  was already resolved. Entry flags are kept, including intent-to-add and
+  skip-worktree (the index is then written as version 3, as git does). A
+  staged blob whose file was not stat'ed gets the entry `git update-index
+  --cacheinfo` writes (times and size 0). A split index (`link`) or a sparse
+  index (`sdir`) is refused when it is read, with a message, so it is never
+  written over: only part of its entries are in `.git/index`. Version 4 is
+  refused too.
+- The index is written the way git writes it: `index.lock` is taken first
+  (`index.lock exists` and nothing written if it is there), the new index is
+  written there and renamed over `index`. The language has no exclusive create,
+  so the lock is taken with a symbolic link and replaced by the finished file;
+  git sees a lock either way. An index that git or another process wrote
+  after this program read it is not overwritten (`changed by another process`;
+  the commands that build a new index from scratch, such as checkout, have
+  nothing to compare and take the lock only).
 - Identities: a committer without name or email configured falls back to
   `$USER` / `<name>@localhost` as the library always has (git's hostname
   and GECOS lookup is not done); dates without a zone use UTC.

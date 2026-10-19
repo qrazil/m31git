@@ -369,6 +369,7 @@ fi
 # fixtures under `$WORK` -- see its own header.
 
 source tests/test_write.sh
+source tests/test_index_write.sh
 
 # --- .gitignore filtering, against real 'git status --short --untracked-files=all'
 

@@ -994,6 +994,9 @@ pub void replace_entry(GIT_index.Index index, GIT_index.Entry entry) {
     int entry_index = 0;
     while (entry_index < index.entries.size()) {
         if (is_bytes_equal(index.entries[entry_index].path, entry.path)) {
+            // skip-worktree (0x4000) belongs to the path and survives a new blob;
+            // intent-to-add (0x2000) is over once there is one
+            entry.ext_flags = index.entries[entry_index].ext_flags & 0x4000;
             index.entries[entry_index] = entry;
             return;
         }

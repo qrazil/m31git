@@ -1561,6 +1561,15 @@ pub Result<GIT_index.Index, Error> read_index(str gitdir) {
                 case BadExtension: {
                     return Result<GIT_index.Index, Error>.Err(Error.Index(error));
                 }
+                case RequiredExtension: {
+                    return Result<GIT_index.Index, Error>.Err(Error.Index(error));
+                }
+                case Locked: {
+                    return Result<GIT_index.Index, Error>.Err(Error.Index(error));
+                }
+                case Changed: {
+                    return Result<GIT_index.Index, Error>.Err(Error.Index(error));
+                }
             }
         }
     }

@@ -322,7 +322,8 @@ pub bool DiffLayer.is_in_head_tree(bytes relative_path) {
 }
 
 /// `relative_path`'s index entry now names a fresh blob of `content`, mode kept,
-/// stat fields reset so the next `status` re-hashes it. `said` becomes the
+/// stat fields reset (times and size 0, as `git update-index --cacheinfo` and
+/// `git apply --cached` write them) so the next `status` re-hashes it. `said` becomes the
 /// status-line message on success.
 pub bool DiffLayer.did_set_index_blob(bytes relative_path, bytes content, str said) {
     str blob_id = "";
@@ -344,7 +345,7 @@ pub bool DiffLayer.did_set_index_blob(bytes relative_path, bytes content, str sa
         case None: {
         }
     }
-    GIT_ui_model.replace_entry(index, GIT_index.Entry(0, 0, 0, 0, 0, 0, mode, 0, 0, -1, blob_id, 0, false, relative_path));
+    GIT_ui_model.replace_entry(index, GIT_index.without_stat(mode, blob_id, relative_path));
     match (GIT_index.write(gitdir, index)) {
         case Ok: {
             message = said;

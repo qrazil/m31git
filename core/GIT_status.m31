@@ -286,6 +286,15 @@ Result<Status, Error> status_core(str gitdir, str worktree, bool is_icase, bool 
                 case Checksum: {
                     return Result<Status, Error>.Err(Error.Index(error));
                 }
+                case RequiredExtension: {
+                    return Result<Status, Error>.Err(Error.Index(error));
+                }
+                case Locked: {
+                    return Result<Status, Error>.Err(Error.Index(error));
+                }
+                case Changed: {
+                    return Result<Status, Error>.Err(Error.Index(error));
+                }
             }
         }
     }
