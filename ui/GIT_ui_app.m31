@@ -10,9 +10,10 @@
 // against 0.27.1 under a pty, see CHANGELOG 0.28.0):
 //   - one frame per event (`drain_events` 0): the loop used to draw after every
 //     event it read, and tui's default is one frame per burst;
-//   - `tick_ms` is 250 ms, as before. A lone Escape is resolved when a read times
-//     out, and with the timer on a read waits only until the next tick when that is
-//     sooner, so Escape is resolved between 1 and 250 ms after it (it was always 250);
+//   - the escape wait is 250 ms, as before: `escape_wait_ms` (tui 0.12.0) makes a lone
+//     Escape, or a held start of an escape sequence, wait that long for more input
+//     whatever `tick_ms` and the timer say. (With tui 0.11.0 the read waited only until
+//     the next tick when that was sooner, so Escape came 1 to 250 ms after the key;)
 //   - mouse reports are asked for with `should_report_raw_mouse` and reach
 //     `State.handle` as they arrive: mgit does its own hit testing, so the loop
 //     routes nothing, and no motion is asked for;
@@ -81,12 +82,17 @@ pub bool is_sync_wanted_here(str mode) {
     return is_sync_wanted(mode, os.env("TERM").or(""), os.env("TERM_PROGRAM").or(""));
 }
 
+/// How long a lone Escape waits for the rest of a key sequence, what the loop 0.27.1
+/// ran on (its read timeout, 250 ms) and now `Loop.escape_wait_ms`.
+pub const int ESCAPE_WAIT_MS = 250;
+
 /// The loop's settings. `is_mouse`: ask for mouse reports. `is_sync`: ask the
 /// terminal whether it has synchronized output and, if it says so, write every
 /// frame inside the markers.
 pub TUI_app.Loop make_loop(bool is_mouse, bool is_sync) {
     TUI_app.Loop loop = TUI_app.Loop(should_report_raw_mouse: is_mouse, should_sync: is_sync);
     loop.animate_ms = GIT_ui_autorefresh.TICK_MS;
+    loop.escape_wait_ms = ESCAPE_WAIT_MS;
     loop.drain_events = 0;
     return loop;
 }

@@ -58,7 +58,8 @@ counter.check("the reports are raw: the loop routes none", with_mouse.should_rep
 counter.check("no paste, focus or keyboard mode is asked for", !with_mouse.should_report_paste && !with_mouse.should_report_focus && !with_mouse.should_disambiguate_keys && !with_mouse.should_try_modify_other_keys, "");
 // --- what the reads and redraws depend on
 counter.check("one frame per event, as the loop 0.27.1 ran", with_mouse.drain_events == 0, str(with_mouse.drain_events));
-counter.check("a read waits at most 250 ms (the longest a held Escape waits), as before", with_mouse.tick_ms == 250 && before(true).tick_ms == 250, str(with_mouse.tick_ms));
+counter.check("a read waits at most 250 ms, as before", with_mouse.tick_ms == 250 && before(true).tick_ms == 250, str(with_mouse.tick_ms));
+counter.check("a lone Escape waits 250 ms for more input, under the timer too (tui 0.12.0)", with_mouse.escape_wait_ms == 250 && GIT_ui_app.ESCAPE_WAIT_MS == 250 && with_mouse.escape_wait_ms == before(true).tick_ms, str(with_mouse.escape_wait_ms));
 counter.check("the timer is the 250 ms idle tick", with_mouse.animate_ms == 250 && GIT_ui_autorefresh.TICK_MS == 250, str(with_mouse.animate_ms));
 counter.check("scroll regions and the managed cursor are off, as before", !with_mouse.should_scroll && !with_mouse.should_manage_cursor, "");
 counter.check("keys come from standard input", with_mouse.input_fd == 0, str(with_mouse.input_fd));

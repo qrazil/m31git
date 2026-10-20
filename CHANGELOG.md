@@ -11,7 +11,7 @@ Each release's changes in one place (the details are in `README.md` and
   `Ticker` the loop is given, and `make_loop`, the loop's settings in one place (public, tested by
   `tests/t_loop.m31`). The migration follows tui-markdown 0.6.0 and 0.7.0 (`MDV_cli.make_loop`,
   `App`/`Screen` as `Handler`/`Ticker`/`AfterFrame`, tui's README mapping table). Built and tested against
-  m31 v0.6.0 and tui v0.11.0 (e156723), the pin of 0.27.1.
+  m31 v0.9.0 and tui v0.12.0 (ed5513a).
   - **Nothing changes for a user with `--sync off`; the bytes written to the terminal are identical to
     0.27.1.** Checked by driving both binaries through the same 21 scripted sessions under a pty
     (577 steps, 259532 bytes of output per binary; the harness is not in the repository, it needs a 0.27.1
@@ -31,16 +31,24 @@ Each release's changes in one place (the details are in `README.md` and
     `should_report_raw_mouse` (the same modes as before, no motion) and passed to mgit's own hit testing
     unrouted; no paste, focus or keyboard mode; `tick_ms` 250 ms; keys from standard input; the terminal
     given back and taken again around `$EDITOR`, which still ends the loop and starts it again.
-  - **Two differences in time, not in bytes.** (1) A lone Escape is resolved when a read times out. With the
-    timer on, a read waits only until the next tick when that is sooner, so Escape takes 1 to 250 ms where it
-    took 250 ms; a terminal link that delivers the bytes of one key (an arrow key's three) more than a few
-    milliseconds apart can read it as an Escape followed by two characters. `Loop` has no knob for the wait on
-    a held prefix apart from `tick_ms`, which the timer undercuts (a finding for tui). (2) The auto-refresh
-    ticker (`GIT_ui_autorefresh`) is now called by the loop's timer every 250 ms, also while keys arrive; a tick
-    that follows an event is not counted, so the repository is still polled after about a second of idleness
-    (every `POLL_TICKS`-th idle tick), but the phase of the polls is that of the timer, not of the last key.
+  - **The escape wait is the old one (tui 0.12.0).** Moving onto `run_with` first changed a lone Escape from
+    a fixed 250 ms to 1 to 250 ms: the loop's read timeout is `min(tick_ms, time to the next tick)` and
+    `term.Reader.read` resolves a lone Escape only on a timeout, so a tick could shorten the wait to 1 ms
+    (and an arrow key's bytes arriving a few ms apart, as over a slow link, could be read as Escape plus
+    two characters). tui 0.12.0 added `Loop.escape_wait_ms` for this (found by this migration, and it needs
+    m31 v0.9.0's `term.Reader.read_keys`); `make_loop` sets it to 250, so a lone Escape, or a held start of an
+    escape sequence, waits 250 ms for more input counted from the last byte, whatever the timer does.
+    Checked by `tests/t_loop.m31` and `tests/pty_loop.py` (`ESC [ B` written in two pieces 80 ms apart is one
+    key at twelve phases of the timer; a lone ESC quits).
+  - **One difference in time, not in bytes.** The auto-refresh ticker (`GIT_ui_autorefresh`) is now called by
+    the loop's timer every 250 ms, also while keys arrive; a tick that follows an event is not counted, so the
+    repository is still polled after about a second of idleness (every `POLL_TICKS`-th idle tick), but the
+    phase of the polls is that of the timer, not of the last key.
     `AutoRefresh.did_change_on_tick()` is now `AutoRefresh.tick(elapsed_ms)` (it answers a
     `TUI_app.Action`, `Redraw` when the repository changed) and `AutoRefresh.note_input()` is new.
+- **tui is pinned to v0.12.0** (`ed5513a`, was v0.11.0, `e156723`); `syntax` stays at `e49e01c`, which tui
+  v0.12.0 pins too. **m31 v0.9.0 is the toolchain** (tui 0.12.0 needs it): the workflows' `M31_REF` and
+  `M31_MUSL_REF` are v0.9.0 (they were v0.6.0).
 - **`--sync on|off|auto`: synchronized output (DEC mode 2026).** Each frame is written between `CSI ? 2026 h`
   and `l`, so a terminal shows it whole, never half drawn. It is on by default (`auto`): the terminal is asked
   (DECRQM) when mgit starts and the markers are written only after it answers that it has the mode (set,
