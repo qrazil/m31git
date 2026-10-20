@@ -240,6 +240,9 @@ case_() {
     { dump_local "$b"; dump_remote "$SRV/repos/rb/r.git"; } > "$WORK/dump-b" 2>&1
     # `rebase` here prints no `Rebasing (n/m)` progress (docs/GIT-COMPAT.md)
     sed -i.bak 's/Rebasing ([0-9]*\/[0-9]*)\r\{0,1\}//' "$WORK/log-a.err" "$WORK/log-b.err"; rm -f "$WORK"/log-[ab].err.bak
+    # git of 2.49 and later says "warning: redirecting to <url>" when the server redirects a credentialed
+    # request; older gits (and 1git) stay silent. A warning on stderr only: not compared.
+    sed -i.bak '/^warning: redirecting to /d' "$WORK/log-a.err" "$WORK/log-b.err"; rm -f "$WORK"/log-[ab].err.bak
     for f in log-a log-a.err dump-a; do normalise "$WORK/$f" ra "$a"; done
     for f in log-b log-b.err dump-b; do normalise "$WORK/$f" rb "$b"; done
     local failed=0
