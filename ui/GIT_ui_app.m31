@@ -97,5 +97,8 @@ pub TUI_app.Loop make_loop(bool is_mouse, bool is_sync) {
     loop.drain_events = 0;
     // the colours the terminal has, not 24-bit ones for all: Terminal.app has none and misreads them
     loop.depth = TUI_style.detect_depth();
+    // CTRL-L writes every cell again; and `--sync on` means Terminal.app too (`auto` leaves it out itself)
+    loop.should_repaint_on_ctrl_l = true;
+    loop.should_sync_on_apple_terminal = is_sync;
     return loop;
 }

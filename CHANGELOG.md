@@ -5,12 +5,13 @@ Each release's changes in one place (the details are in `README.md` and
 
 ## 0.29.0
 
-- **Screen corruption on real Macs: pins tui 0.13.0** (c27b6c8; see its CHANGELOG). Opening mgit's help over a status list whose
+- **Screen corruption on real Macs: pins tui 0.13.0** (f67234d; see its CHANGELOG). Opening mgit's help over a status list whose
   names hold a text emoji or a keycap left pieces of the names inside the overlay on a terminal that measures them
   differently (`tests/pty_variants.py` below, on the unchanged 0.28.0 binary: 10 of 17 steps wrong on 7 emulated
   terminals; here the help screen showed `U  t  unstage all`). tui 0.13.0 writes rows with clusters of uncertain width
   whole from the cluster to the end of the row, clears the column a narrower terminal leaves undrawn, turns autowrap
   off, and clears the screen on a full repaint.
+- CTRL-L redraws the whole screen (`Loop.should_repaint_on_ctrl_l`); mgit had no such key.
 - mgit picks its colour depth from `COLORTERM`, `TERM_PROGRAM` and `TERM` (`TUI_style.detect_depth`). It wrote 24-bit
   colours to every terminal; Terminal.app has none before macOS 26 and misreads `38;2;r;g;b` as other attributes.
 - `tests/pty_variants.py` (run by `tests/test_loop.sh`; skips when `pyte` is missing): mgit driven over a repository whose names
