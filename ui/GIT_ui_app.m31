@@ -25,6 +25,7 @@ import tui.app.TUI_app;
 import tui.core.TUI_buffer;
 import tui.core.TUI_geometry;
 import tui.core.TUI_style;
+import tui.core.TUI_width;
 import ui.GIT_client;
 import ui.GIT_ui_autorefresh;
 
@@ -101,4 +102,20 @@ pub TUI_app.Loop make_loop(bool is_mouse, bool is_sync) {
     loop.should_repaint_on_ctrl_l = true;
     loop.should_sync_on_apple_terminal = is_sync;
     return loop;
+}
+
+/// What `--width-probe` and `--borders` come to, for the loop. `probe` is "on" (measure the terminal's
+/// character widths at start-up, tui 0.14.0; the default) or "off" (never ask: the 0.13.0 policy, no wait).
+/// `TUI_WIDTH_PROBE=off` in the environment turns the measuring off under `on` too. `borders` is "auto"
+/// (ASCII borders only when the terminal was measured drawing box characters wide), "unicode" or "ascii";
+/// `TUI_BORDERS=ascii|unicode` in the environment wins over `auto`, as tui reads it.
+pub void apply_width(TUI_app.Loop loop, str probe, str borders) {
+    loop.should_calibrate_width = probe != "off";
+    if (borders == "ascii") {
+        loop.borders = TUI_width.Borders.Ascii;
+    } else if (borders == "unicode") {
+        loop.borders = TUI_width.Borders.Unicode;
+    } else {
+        loop.borders = TUI_width.Borders.Auto;
+    }
 }

@@ -8,7 +8,8 @@
 // synced jump list, toggled on demand.
 //
 //   bash scripts/build.sh                  # -> ./mgit
-//   ./mgit [PATH] [--mouse on|off] [--sync on|off|auto]     # PATH default: "."
+//   ./mgit [PATH] [--mouse on|off] [--sync on|off|auto]
+//       [--width-probe on|off] [--borders auto|unicode|ascii]     # PATH default: "."
 //   ./mgit --help | --version | --completions bash|zsh|fish
 //
 // The command line is Oro's grammar (`lib/args`), like `1git`'s: two dashes
@@ -62,10 +63,12 @@ import ui.GIT_ui_sbs;
 
 args.Parser parser = args.Parser("mgit", summary: "an interactive git client for the terminal: one outline of changes, staging and commits; branches, merges, rebases, stashes");
 parser.version = GIT_transport.AGENT.substr(5, GIT_transport.AGENT.size);
-parser.epilog = "the mouse is on unless the environment (M31GIT_MOUSE=off) or git config (mgit.mouse = off) says otherwise; --mouse overrides both\n" + "--sync asks the terminal (DECRQM) whether it has synchronized output and uses it only if it says so; auto never asks Terminal.app or a dumb terminal, on asks every terminal, off asks none\n" + "a terminal is needed: mgit reads the keyboard. Tab changes mode (Status, Commit, History, Branches, Stash), ? lists the keys of the one you are in, : opens a palette of every action.";
+parser.epilog = "the mouse is on unless the environment (M31GIT_MOUSE=off) or git config (mgit.mouse = off) says otherwise; --mouse overrides both\n" + "--sync asks the terminal (DECRQM) whether it has synchronized output and uses it only if it says so; auto never asks Terminal.app or a dumb terminal, on asks every terminal, off asks none\n" + "the width probe (tui 0.14.0) asks the terminal at start-up, in one write, how wide it draws box characters, arrows, emoji and the like, and waits at most 150 ms for the answer; environment: TUI_WIDTH_PROBE=off skips it, TUI_BORDERS=ascii|unicode|auto chooses the borders\n" + "a terminal is needed: mgit reads the keyboard. Tab changes mode (Status, Commit, History, Branches, Stash), ? lists the keys of the one you are in, : opens a palette of every action.";
 parser.optional("path", ".", help: "where the repository's work tree is (run it from the top level)", placeholder: "PATH");
 parser.value("mouse", help: "mouse reports: on for the wheel and clicks, off to keep the terminal's own text selection", placeholder: "on|off");
 parser.value("sync", help: "synchronized output (DEC 2026): frames drawn whole once the terminal answers that it has it; on, off or auto (default)", placeholder: "on|off|auto");
+parser.value("width-probe", help: "measure how wide the terminal draws characters at start-up (waits at most 150 ms for a terminal that never answers); on (default) or off (TUI_WIDTH_PROBE=off does the same)", placeholder: "on|off");
+parser.value("borders", help: "box drawing: auto (ASCII only if the terminal draws box characters wide), unicode or ascii (TUI_BORDERS=ascii|unicode does the same)", placeholder: "auto|unicode|ascii");
 parser.completions();
 List<str> argv = os.arguments();
 args.Parsed parsed = parser.parse_or_exit(argv.slice(1, argv.size()), status: 2);
@@ -77,6 +80,14 @@ if (mouse_choice != "" && mouse_choice != "on" && mouse_choice != "off") {
 str sync_choice = parsed.value("sync").or("auto");
 if (sync_choice != "on" && sync_choice != "off" && sync_choice != "auto") {
     parser.fail("'--sync' needs one of on, off, auto, and got '" + sync_choice + "'", status: 2);
+}
+str probe_choice = parsed.value("width-probe").or("on");
+if (probe_choice != "on" && probe_choice != "off") {
+    parser.fail("'--width-probe' needs one of on, off, and got '" + probe_choice + "'", status: 2);
+}
+str borders_choice = parsed.value("borders").or("auto");
+if (borders_choice != "auto" && borders_choice != "unicode" && borders_choice != "ascii") {
+    parser.fail("'--borders' needs one of auto, unicode, ascii, and got '" + borders_choice + "'", status: 2);
 }
 str git_directory = GIT_repository.find(path);
 if (git_directory == "") {
@@ -100,6 +111,7 @@ if (mouse_choice != "") {
 }
 GIT_ui_app.App app = GIT_ui_app.open(state);
 TUI_app.Loop loop = GIT_ui_app.make_loop(is_mouse, GIT_ui_app.is_sync_wanted_here(sync_choice));
+GIT_ui_app.apply_width(loop, probe_choice, borders_choice);
 bool is_running = true;
 while (is_running) {
     match (loop.run_with(app, app, app, TUI_app.NoMouse())) {

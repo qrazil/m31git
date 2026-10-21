@@ -201,7 +201,7 @@ standard input and writes ours, which is how the oracle scripts call 1git
 ## mgit
 
 ```
-mgit [PATH] [--mouse on|off] [--sync on|off|auto]
+mgit [PATH] [--mouse on|off] [--sync on|off|auto] [--width-probe on|off] [--borders auto|unicode|ascii]
 mgit --help | --version | --completions bash|zsh|fish
 ```
 
@@ -219,6 +219,22 @@ a terminal that stays silent gets the frames it always got. It has no short form
 one-letter spellings are for what is typed daily (see above). Exit status: 0
 after a normal quit, 1 when there is no repository or no terminal, 2 for a
 command line that is not understood.
+
+`--width-probe` and `--borders` are tui 0.14.0's width calibration. By default, once
+the alternate screen is entered, mgit writes one batch of cursor-position-report
+requests (a reference character per class: box drawing, arrows, Greek and Cyrillic,
+emoji, a flag, a family, a combining letter, a Nerd Font glyph) and reads what the
+terminal says it drew; the screen is then laid out at the measured widths. A terminal
+that answers costs about one round trip (under a millisecond locally); one that
+never answers (a pipe-fed emulator, some multiplexers) costs a single wait of at most
+150 ms before the first frame, and gets the 0.13.0 policy. Keys typed meanwhile are
+kept, in order. `--width-probe off`, or `TUI_WIDTH_PROBE=off` (also `0`, `no`,
+`false`) in the environment, never asks; the environment variable also turns it off
+under `--width-probe on`. `--borders auto` (the default) draws line-drawing borders
+unless the probe found the terminal drawing them two columns wide, and then writes
+ASCII (`+ - |`) so the columns stay aligned; `--borders unicode` and `--borders ascii`
+force one, as does `TUI_BORDERS=ascii|unicode|auto` (ascii and unicode in the
+environment win over `auto`). Neither has a short form.
 
 Inside, `mgit` is five full-screen modes (1 Status, 2 Commit, 3 History,
 4 Branches, 5 Stash): `Tab` / `Shift-Tab` / `1`-`5` move between them, the bottom

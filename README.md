@@ -81,6 +81,7 @@ bash scripts/build.sh                 # mgit.m31 -> ./mgit   (-o name to rename)
 ./mgit                         # run from a repository's own top level
 ./mgit ../other --mouse off    # PATH is the repository; --mouse on|off beats M31GIT_MOUSE (see --help)
 ./mgit --sync off              # synchronized output (DEC 2026): on, off, or auto (the default; asked only after the terminal answers)
+./mgit --width-probe off       # do not measure the terminal's character widths at start-up (TUI_WIDTH_PROBE=off); --borders auto|unicode|ascii (TUI_BORDERS)
 ```
 
 | file | what it is |

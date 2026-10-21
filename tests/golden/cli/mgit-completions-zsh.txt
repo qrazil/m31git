@@ -5,7 +5,7 @@ _mgit() {
     local word command=""
     if [[ $PREFIX == -* ]]; then
         case $command in
-            *) choices=('--mouse:mouse reports\: on for the wheel and clicks, off to keep the terminal'\''s own text selection' '--sync:synchronized output (DEC 2026)\: frames drawn whole once the terminal answers that it has it; on, off or auto (default)' '--completions:print a shell completion script (bash, zsh or fish) and exit' '--help:show this help' '--version:print the version and exit') ;;
+            *) choices=('--mouse:mouse reports\: on for the wheel and clicks, off to keep the terminal'\''s own text selection' '--sync:synchronized output (DEC 2026)\: frames drawn whole once the terminal answers that it has it; on, off or auto (default)' '--width-probe:measure how wide the terminal draws characters at start-up (waits at most 150 ms for a terminal that never answers); on (default) or off (TUI_WIDTH_PROBE=off does the same)' '--borders:box drawing\: auto (ASCII only if the terminal draws box characters wide), unicode or ascii (TUI_BORDERS=ascii|unicode does the same)' '--completions:print a shell completion script (bash, zsh or fish) and exit' '--help:show this help' '--version:print the version and exit') ;;
         esac
         _describe 'option' choices
     else

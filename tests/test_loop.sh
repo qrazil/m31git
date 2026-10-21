@@ -51,3 +51,14 @@ if [ -x "$WORK/mgit" ] && command -v python3 >/dev/null; then
         bad "loop: mgit on differently measuring terminals" "$(printf '%s\n' "$out" | head -12)"
     fi
 fi
+
+# The start-up width probe (tui 0.14.0) end to end through the real binary: an emulator that answers cursor position
+# reports (an agreeing terminal, one that draws box characters wide, a mute one), `--width-probe`, `--borders`,
+# TUI_WIDTH_PROBE, TUI_BORDERS. Skips cleanly when pyte is missing.
+if [ -x "$WORK/mgit" ] && command -v python3 >/dev/null; then
+    if out=$(python3 tests/pty_width.py "$WORK/mgit" "$WORK/ptywidth" 2>&1); then
+        note "loop: mgit's width probe on a pty -- $(printf '%s\n' "$out" | tail -1)"
+    else
+        bad "loop: mgit's width probe on a pty" "$(printf '%s\n' "$out" | grep -v '^ok' | head -12)"
+    fi
+fi

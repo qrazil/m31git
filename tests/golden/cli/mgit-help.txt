@@ -3,15 +3,18 @@ usage: mgit [options] [<PATH>]
 an interactive git client for the terminal: one outline of changes, staging and commits; branches, merges, rebases, stashes
 
 arguments:
-  [<PATH>]                  where the repository's work tree is (run it from the top level) (default .)
+  [<PATH>]                           where the repository's work tree is (run it from the top level) (default .)
 
 options:
-       --help               show this help
-       --version            print the version and exit
-       --mouse on|off       mouse reports: on for the wheel and clicks, off to keep the terminal's own text selection
-       --sync on|off|auto   synchronized output (DEC 2026): frames drawn whole once the terminal answers that it has it; on, off or auto (default)
-       --completions SHELL  print a shell completion script (bash, zsh or fish) and exit
+       --help                        show this help
+       --version                     print the version and exit
+       --mouse on|off                mouse reports: on for the wheel and clicks, off to keep the terminal's own text selection
+       --sync on|off|auto            synchronized output (DEC 2026): frames drawn whole once the terminal answers that it has it; on, off or auto (default)
+       --width-probe on|off          measure how wide the terminal draws characters at start-up (waits at most 150 ms for a terminal that never answers); on (default) or off (TUI_WIDTH_PROBE=off does the same)
+       --borders auto|unicode|ascii  box drawing: auto (ASCII only if the terminal draws box characters wide), unicode or ascii (TUI_BORDERS=ascii|unicode does the same)
+       --completions SHELL           print a shell completion script (bash, zsh or fish) and exit
 
 the mouse is on unless the environment (M31GIT_MOUSE=off) or git config (mgit.mouse = off) says otherwise; --mouse overrides both
 --sync asks the terminal (DECRQM) whether it has synchronized output and uses it only if it says so; auto never asks Terminal.app or a dumb terminal, on asks every terminal, off asks none
+the width probe (tui 0.14.0) asks the terminal at start-up, in one write, how wide it draws box characters, arrows, emoji and the like, and waits at most 150 ms for the answer; environment: TUI_WIDTH_PROBE=off skips it, TUI_BORDERS=ascii|unicode|auto chooses the borders
 a terminal is needed: mgit reads the keyboard. Tab changes mode (Status, Commit, History, Branches, Stash), ? lists the keys of the one you are in, : opens a palette of every action.

@@ -1,6 +1,6 @@
 # m31git project file: this directory is the project root.
 name m31git
-version 0.29.0
+version 0.30.0
 syntax https://github.com/qrazil/syntax e49e01c32fba95d23b9ad2267a3cfaa967fb758b
-# tui v0.13.0
-tui https://github.com/qrazil/tui f67234d379761eca5ddf93ee1be134d9f6687d18
+# tui v0.15.0
+tui https://github.com/qrazil/tui f7c918947b4fd40301e6714c55fb1310a658937a

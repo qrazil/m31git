@@ -19,6 +19,7 @@ import term;
 import tui.app.TUI_app;
 import tui.app.TUI_diff;
 import tui.core.TUI_mouse;
+import tui.core.TUI_width;
 import ui.GIT_client;
 import ui.GIT_ui_app;
 import ui.GIT_ui_autorefresh;
@@ -75,6 +76,39 @@ counter.check("auto: never asked of Terminal.app", !GIT_ui_app.is_sync_wanted("a
 counter.check("auto: never asked of a dumb terminal", !GIT_ui_app.is_sync_wanted("auto", "dumb", "") && !GIT_ui_app.is_sync_wanted("auto", "linux", "") && !GIT_ui_app.is_sync_wanted("auto", "vt100", "") && !GIT_ui_app.is_sync_wanted("auto", "ansi", "") && !GIT_ui_app.is_sync_wanted("auto", "", ""), "");
 counter.check("on is on, whatever the environment says", GIT_ui_app.is_sync_wanted("on", "dumb", "Apple_Terminal"), "");
 counter.check("off is off, whatever the environment says", !GIT_ui_app.is_sync_wanted("off", "xterm-256color", "iTerm.app"), "");
+
+str borders_name(TUI_app.Loop loop) {
+    match (loop.borders) {
+        case Auto: {
+            return "auto";
+        }
+        case Ascii: {
+            return "ascii";
+        }
+        case Unicode: {
+            return "unicode";
+        }
+    }
+}
+
+// --- --width-probe, --borders (tui 0.14.0): the loop measures the terminal unless told not to
+counter.check("the width probe is on by default", with_mouse.should_calibrate_width, "");
+TUI_app.Loop probe_off = GIT_ui_app.make_loop(true, false);
+GIT_ui_app.apply_width(probe_off, "off", "auto");
+counter.check("--width-probe off: the loop does not calibrate", !probe_off.should_calibrate_width && probe_off.is_width_probe_off(), "");
+TUI_app.Loop probe_on = GIT_ui_app.make_loop(true, false);
+GIT_ui_app.apply_width(probe_on, "on", "auto");
+counter.check("--width-probe on: the loop calibrates (unless TUI_WIDTH_PROBE says off)", probe_on.should_calibrate_width, "");
+counter.check("the width probe changes no byte on entry or exit", probe_on.enter_sequence() == with_mouse.enter_sequence() && probe_off.leave_sequence() == with_mouse.leave_sequence(), "");
+TUI_app.Loop border_ascii = GIT_ui_app.make_loop(true, false);
+GIT_ui_app.apply_width(border_ascii, "on", "ascii");
+counter.check("--borders ascii", borders_name(border_ascii) == "ascii", "");
+TUI_app.Loop border_unicode = GIT_ui_app.make_loop(true, false);
+GIT_ui_app.apply_width(border_unicode, "on", "unicode");
+counter.check("--borders unicode", borders_name(border_unicode) == "unicode", "");
+TUI_app.Loop border_auto = GIT_ui_app.make_loop(true, false);
+GIT_ui_app.apply_width(border_auto, "on", "auto");
+counter.check("--borders auto", borders_name(border_auto) == "auto", "");
 // --- the ticker: idle ticks, not ticks that follow an event
 List<str> argv = os.arguments();
 if (argv.size() < 3) {

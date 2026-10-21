@@ -7,11 +7,13 @@ _mgit_complete() {
     case "$command:$prev" in
         :--mouse) return ;;
         :--sync) return ;;
+        :--width-probe) return ;;
+        :--borders) return ;;
         :--completions) return ;;
     esac
     if [[ "$cur" == -* ]]; then
         case "$command" in
-            *) COMPREPLY=($(compgen -W "--mouse --sync --completions --help --version" -- "$cur")) ;;
+            *) COMPREPLY=($(compgen -W "--mouse --sync --width-probe --borders --completions --help --version" -- "$cur")) ;;
         esac
     else
         COMPREPLY=($(compgen -f -- "$cur"))

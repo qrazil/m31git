@@ -3,6 +3,27 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.30.0
+
+- **Pins tui 0.15.0** (f7c9189; see its CHANGELOG for 0.14.0 and 0.15.0). mgit now measures the terminal at start-up and
+  its renderer is several times faster with the same bytes.
+- **The terminal's character widths are measured at start-up** (tui 0.14.0, `Loop.run_with`). One write asks the terminal
+  how wide it draws a reference character per class and the answers set a per-session width table; a terminal that draws
+  what the library expects is written to with fewer bytes (no forced rewrites of arrows, box drawing, Greek), one that
+  draws something else gets its own widths. A terminal that never answers costs one wait of at most 150 ms before the
+  first frame (under a pty on Linux: the first frame 5 ms after the alternate screen with an answering emulator, 153-166 ms with a
+  mute one, 0 ms with `--width-probe off`) and keeps the 0.29.0 output. Keys typed while it waits are kept.
+- **`--width-probe on|off`** (default on) and `TUI_WIDTH_PROBE=off` skip the measuring. **`--borders auto|unicode|ascii`** and
+  `TUI_BORDERS=ascii|unicode|auto` pick the borders: `auto` writes ASCII borders only on a terminal measured drawing box
+  characters wide (a CJK locale or an "ambiguous = wide" profile), where every border broke before. Both are documented in
+  `docs/CLI.md` and `--help`; a bad value is a usage error (2).
+- `tests/pty_width.py` (run by `tests/test_loop.sh`; skips when `pyte` is missing) runs the real `mgit` binary on a pty
+  against an emulator that answers cursor position reports: the probe is asked, a terminal that draws box characters wide
+  gets ASCII borders and a screen equal to its own repaint, `--width-probe off` / `TUI_WIDTH_PROBE=off` ask nothing, a
+  mute terminal gets its first frame after the budget, and keys typed during the wait are not lost. `tests/t_loop.m31`
+  and `tests/pty_cli.py` cover the two options.
+- The advertised user agent is `1git/0.30.0`.
+
 ## 0.29.0
 
 - **Screen corruption on real Macs: pins tui 0.13.0** (f67234d; see its CHANGELOG). Opening mgit's help over a status list whose
