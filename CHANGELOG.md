@@ -3,6 +3,22 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.29.0
+
+- **Screen corruption on real Macs: pins tui 0.13.0** (c27b6c8; see its CHANGELOG). Opening mgit's help over a status list whose
+  names hold a text emoji or a keycap left pieces of the names inside the overlay on a terminal that measures them
+  differently (`tests/pty_variants.py` below, on the unchanged 0.28.0 binary: 10 of 17 steps wrong on 7 emulated
+  terminals; here the help screen showed `U  t  unstage all`). tui 0.13.0 writes rows with clusters of uncertain width
+  whole from the cluster to the end of the row, clears the column a narrower terminal leaves undrawn, turns autowrap
+  off, and clears the screen on a full repaint.
+- mgit picks its colour depth from `COLORTERM`, `TERM_PROGRAM` and `TERM` (`TUI_style.detect_depth`). It wrote 24-bit
+  colours to every terminal; Terminal.app has none before macOS 26 and misreads `38;2;r;g;b` as other attributes.
+- `tests/pty_variants.py` (run by `tests/test_loop.sh`; skips when `pyte` is missing): mgit driven over a repository whose names
+  and diffs hold text emoji, keycaps, ZWJ sequences, Devanagari, halfwidth katakana, Nerd Font and new-emoji glyphs
+  (selection moves, folds, the mode keys, help, resizes), replayed on seven emulated terminals; after each step every
+  terminal's screen must equal that terminal's own repaint. Built and tested against m31 v0.9.0 and tui v0.13.0.
+- The advertised user agent is `1git/0.29.0`.
+
 ## 0.28.0
 
 - **mgit runs on tui's `Loop.run_with`; the private copy of the loop is gone.** `ui/GIT_ui_loop.m31`

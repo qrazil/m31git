@@ -40,3 +40,14 @@ if [ -x "$WORK/mgit" ] && command -v python3 >/dev/null; then
         bad "loop: mgit under a pty" "$(printf '%s\n' "$out" | grep -v '^ok' | head -12)"
     fi
 fi
+
+# mgit's screens on terminals that measure text differently: after every step each emulated terminal's
+# screen equals that terminal's own repaint (names and diffs with text emoji, keycaps, Devanagari,
+# halfwidth katakana, Nerd Font and new-emoji glyphs). Skips cleanly when pyte is missing.
+if [ -x "$WORK/mgit" ] && command -v python3 >/dev/null; then
+    if out=$(python3 tests/pty_variants.py "$WORK/mgit" "$WORK/ptyvariants" 2>&1); then
+        note "loop: mgit on differently measuring terminals -- $(printf '%s\n' "$out" | tail -1)"
+    else
+        bad "loop: mgit on differently measuring terminals" "$(printf '%s\n' "$out" | head -12)"
+    fi
+fi
