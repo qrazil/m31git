@@ -1,0 +1,138 @@
+// `t` in History: bisect (magit's `B`, lazygit's bisect menu). Find the commit that broke
+// something by testing commits half way between a bad one and a good one.
+//   s start: the bad commit (the one under the cursor, else HEAD), then a good one
+//   g good   b bad   k skip: mark the commit being tested (HEAD), and the next one is checked out
+//   r reset: back to the branch you started on     l the log of the bisect so far
+// The state is git's (`diff/GIT_bisect.m31`), so `git bisect` carries on what this started.
+
+import core.GIT_refs;
+import diff.GIT_bisect;
+import ui.GIT_ui_core;
+import ui.GIT_ui_prompt;
+import ui.GIT_ui_sequencer;
+import ui.GIT_ui_show;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+import tui.widgets.TUI_menu;
+
+type BisectMenu {
+    GIT_ui_core.Core host;
+    str bad = "";
+}
+
+pub TUI_app.Action BisectMenu.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_BISECT, code)) {
+        case Some(str cmd): {
+            host.pop_overlay();
+            bool is_active = GIT_bisect.is_active(host.gitdir);
+            if (cmd == GIT_ui_core.CMD_BISECT_START) {
+                if (is_active) {
+                    host.say("bisect: already under way (g good, b bad, k skip, r reset)");
+                } else if (host.is_blocked_by_sequence("bisect")) {
+                } else {
+                    str cursor = GIT_ui_sequencer.commit_under_cursor(host);
+                    if (cursor == "") {
+                        cursor = "HEAD";
+                    }
+                    GIT_ui_prompt.open_with(host, this, "bad", "bisect: the bad revision", GIT_ui_core.short_id(cursor));
+                }
+            } else if (cmd == GIT_ui_core.CMD_BISECT_LOG) {
+                if (!is_active) {
+                    host.say("bisect: not under way (t s starts it)");
+                } else {
+                    GIT_ui_show.open_text(host, "bisect log", GIT_bisect.log_text(host.gitdir).split("\n"));
+                }
+            } else if (!is_active) {
+                host.say("bisect: not under way (t s starts it)");
+            } else if (cmd == GIT_ui_core.CMD_BISECT_RESET) {
+                match (GIT_bisect.reset(host.gitdir, host.worktree)) {
+                    case Ok(_): {
+                        host.log_command("bisect reset");
+                        host.say("bisect reset: back where you started");
+                    }
+                    case Err(str why): {
+                        host.say("bisect: " + why);
+                    }
+                }
+                host.reload();
+            } else {
+                str kind = "good";
+                if (cmd == GIT_ui_core.CMD_BISECT_BAD) {
+                    kind = "bad";
+                }
+                if (cmd == GIT_ui_core.CMD_BISECT_SKIP) {
+                    kind = "skip";
+                }
+                match (GIT_bisect.mark(host.gitdir, host.worktree, kind, "")) {
+                    case Ok(GIT_bisect.Step step): {
+                        host.log_command("bisect " + kind);
+                        host.say(describe(host, step));
+                    }
+                    case Err(str why): {
+                        host.say("bisect " + kind + ": " + why);
+                    }
+                }
+                host.reload();
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+/// The prompts' answers (`GIT_ui_prompt.Receiver`).
+pub void BisectMenu.received(str purpose, str text) {
+    str answer = text.trim();
+    if (purpose == "bad") {
+        if (answer == "") {
+            return;
+        }
+        bad = answer;
+        GIT_ui_prompt.open(host, this, "good", "bisect: a good (older) revision");
+        return;
+    }
+    if (purpose == "good" && bad != "" && answer != "") {
+        match (GIT_bisect.start(host.gitdir, host.worktree, bad, [answer])) {
+            case Ok(GIT_bisect.Step step): {
+                host.log_command("bisect start " + bad + " " + answer);
+                host.say(describe(host, step));
+            }
+            case Err(str why): {
+                host.say("bisect: " + why);
+            }
+        }
+        bad = "";
+        host.reload();
+    }
+}
+
+pub void BisectMenu.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    str title = "bisect";
+    if (GIT_bisect.is_active(host.gitdir)) {
+        title = "bisect  [under way]";
+    }
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey(title, GIT_ui_sequencer.items_of(GIT_ui_core.SCOPE_BISECT));
+    which_key.render(buffer, area);
+}
+
+pub List<GIT_ui_core.Hint> BisectMenu.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_BISECT);
+}
+
+str describe(GIT_ui_core.Core host, GIT_bisect.Step step) {
+    if (step.first_bad != "") {
+        return GIT_ui_core.short_id(step.first_bad) + " is the first bad commit -- t r resets (back to where you started)";
+    }
+    if (step.is_only_skipped) {
+        return "bisect: only skipped commits are left to test";
+    }
+    return "Bisecting: " + step.left.to_str() + " revision(s) left to test after this (roughly " + step.steps.to_str() + " step(s)); testing " + GIT_ui_core.short_id(step.next);
+}
+
+pub void open(GIT_ui_core.Core core) {
+    core.push_overlay(BisectMenu(core));
+}

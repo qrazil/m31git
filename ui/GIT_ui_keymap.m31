@@ -178,6 +178,7 @@ pub List<Entry> entries() {
     table.push(row("*", VIEW_ANY, scope_global, GIT_ui_core.CMD_LOG, "command log", "Everywhere", 0));
     table.push(row("*", VIEW_ANY, scope_global, GIT_ui_core.CMD_OVERVIEW, "overview", "Everywhere", 0));
     table.push(row("*", VIEW_ANY, scope_global, GIT_ui_core.CMD_SYNTAX, "syntax colours", "Everywhere", 0));
+    table.push(row("*", VIEW_DOC, scope_outline, GIT_ui_core.CMD_CUSTOM, "custom commands", "Everywhere", 0));
     table.push(row("*", VIEW_DOC, scope_outline, GIT_ui_core.CMD_REFRESH, "refresh", "Everywhere", 0));
     table.push(row("*", VIEW_DOC, scope_outline, GIT_ui_core.CMD_QUIT, "quit", "Everywhere", 9));
     table.push(row("*", VIEW_DOC, scope_outline, GIT_ui_core.CMD_LEAVE, "back to Status (quit from it)", "Everywhere", 0));
@@ -207,6 +208,7 @@ pub List<Entry> entries() {
     table.push(row("status", VIEW_DOC, scope_outline, GIT_ui_core.CMD_DISCARD, "discard", "Stage", 8));
     table.push(row("status", VIEW_DOC, scope_outline, GIT_ui_core.CMD_STAGE_ALL, "stage all", "Stage", 0));
     table.push(row("status", VIEW_DOC, scope_outline, GIT_ui_core.CMD_UNSTAGE_ALL, "unstage all", "Stage", 0));
+    table.push(row("status", VIEW_DOC, scope_outline, GIT_ui_core.CMD_IGNORE, "ignore the untracked file", "Stage", 0));
     table.push(row("status,history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_BLAME, "blame the file", "Review", 0));
     table.push(row("status,history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_HISTORY, "history of the file", "Review", 0));
     table.push(row("status", VIEW_DOC, scope_outline, GIT_ui_core.CMD_TOGGLE, "open or fold", "Review", 0));
@@ -215,6 +217,7 @@ pub List<Entry> entries() {
     table.push(row("commit", VIEW_DOC, scope_commit, GIT_ui_core.CMD_FINISH, "commit staged", "Commit", 2, when: "noseq"));
     table.push(row("commit", VIEW_DOC, scope_commit, GIT_ui_core.CMD_AMEND, "amend HEAD", "Commit", 3, when: "noseq"));
     table.push(row("commit", VIEW_DOC, scope_commit, GIT_ui_core.CMD_SIGNOFF, "sign-off", "Commit", 4));
+    table.push(row("commit", VIEW_DOC, scope_commit, GIT_ui_core.CMD_NOVERIFY, "skip hooks", "Commit", 6));
     table.push(row("commit", VIEW_DOC, scope_commit, GIT_ui_core.CMD_ABORT, "discard draft", "Commit", 5));
     // --- History -----------------------------------------------------------------
     table.push(row("history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_TOGGLE, "open", "History", 1));
@@ -232,6 +235,7 @@ pub List<Entry> entries() {
     table.push(row("history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_QUICK, "edit the commit: reword, drop, squash, fixup, move, amend", "History", 6, when: "idle"));
     table.push(row("history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_REFLOG, "reflog of HEAD: reset, check out, cherry-pick an entry", "History", 0));
     table.push(row("history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_LOGMENU, "log menu: filter, other revision, graph, diff refs", "History", 7));
+    table.push(row("history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_BISECT, "bisect: start, good, bad, skip, reset", "History", 0, when: "idle"));
     // --- Branches ----------------------------------------------------------------
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_TOGGLE, "switch to the branch", "Branch", 1, when: "idle"));
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_BRANCH, "branch menu", "Branch", 2, when: "idle"));
@@ -243,6 +247,7 @@ pub List<Entry> entries() {
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_BRANCH_FORCE_DELETE, "force-delete the branch (asks first)", "Branch", 0, when: "idle"));
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_BRANCH_RENAME, "rename the branch", "Branch", 0, when: "idle"));
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_REMOTES, "remotes: add, remove, rename, set url, prune, fetch", "Sync", 0));
+    table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_WORKTREES, "work trees: add, remove, prune", "Sync", 0));
     // --- Stash -------------------------------------------------------------------
     table.push(row("stash", VIEW_DOC, scope_outline, GIT_ui_core.CMD_STASH, "stash menu", "Stash", 1));
     table.push(row("stash", VIEW_DOC, scope_outline, GIT_ui_core.CMD_TOGGLE, "list with diff", "Stash", 2));

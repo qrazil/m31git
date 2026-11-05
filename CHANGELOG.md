@@ -3,6 +3,22 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.34.0
+
+- **Ignore**: `I` in Status on an untracked file: `g` its path in `.gitignore`, `e` its extension, `d` its directory,
+  `x` its path in `.git/info/exclude`. A line already there is not added twice; a tracked file is refused.
+- **Commit hooks**: the commits mgit makes run `pre-commit` (`pre-merge-commit` for a merge), `commit-msg` (it may
+  edit the message) and `post-commit`, from `core.hooksPath` or `.git/hooks`, output captured and its last line shown.
+  A failing hook refuses the commit and keeps the draft. `v` in the Commit mode skips them (`--no-verify`).
+- **Custom commands**: `;` lists shell commands bound to keys in `.mgit-commands`, `.git/mgit-commands` and
+  `~/.config/m31git/commands` (TAB separated: key, label, command; a leading `?` asks first, `-` does not wait for
+  Enter); `{file}` `{commit}` `{short}` `{branch}` `{remote}` `{stash}` are filled in from the cursor, quoted.
+- **Work trees**: `W` in Branches lists them and adds, removes and prunes (git's rules, on the terminal).
+- **Bisect**: `t` in History: start (bad, then good), good, bad, skip, reset, log. State and refs are git's, so
+  `git bisect` carries on what mgit started; on a history without merges the commits tested are git's, step for step.
+- `tests/pty_tools.py` (36 checks, `tests/test_tools.sh`), each compared with real git.
+- The advertised user agent is `1git/0.34.0`.
+
 ## 0.33.0
 
 - **Remotes.** `M` in Branches lists the remotes: `a` add (name, URL), `d` remove (asks), `r` rename, `u` set the URL,

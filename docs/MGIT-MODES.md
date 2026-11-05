@@ -67,6 +67,7 @@ while a merge, cherry-pick or rebase has conflicts.
 | `s` / `u` | stage / unstage the file under the cursor |
 | `S` / `U` | stage everything / unstage everything |
 | `x` | discard the file's changes (asks first, naming the path) |
+| `I` | ignore the untracked file: `g` path, `e` extension, `d` directory (.gitignore), `x` .git/info/exclude |
 | `d` or `Enter` on a file | open its hunk diff |
 | `c` | go to the Commit mode |
 | `B` / `H` | blame / history of the file |
@@ -101,6 +102,7 @@ there is no order to go by and nothing is treated as a leftover.)
 | `A` | amend HEAD: its message is prefilled, its parents and author are kept |
 | `a` | discard the draft (and the amend), after asking and naming what goes: `discard the draft message "fix the parser"?` (`y` discards, any other key keeps it) |
 | `s` | sign-off on or off: add a `Signed-off-by:` trailer to the commit (below) |
+| `v` | skip the commit hooks (pre-commit, commit-msg, post-commit) or run them again (`--no-verify`) |
 
 After a commit the client returns to Status. `c` in Status is the same as
 pressing `2`, plus a refusal while a cherry-pick, revert or rebase is under way.
@@ -148,6 +150,7 @@ changed); `Enter` on one of its files opens that commit's diff of the file.
 | `o` | check the commit out with a detached HEAD (`git checkout --detach`) |
 | `E` | edit the commit: a menu of `r` reword, `e` edit, `d` drop (asks), `s` squash down, `f` fixup down, `k`/`j` move up/down, `a` amend with the staged changes, `F` new `fixup!` commit (a rebase -i underneath; `r` continues/aborts) |
 | `f` | the log menu: `a` author, `g` message, `s` -S, `p` path, `r` another revision, `G` graph column, `c` clear, `d` diff two refs, `D` the commit against HEAD |
+| `t` | bisect: `s` start (bad, then good), `g` good, `b` bad, `k` skip, `r` reset, `l` log |
 | `L` | the reflog of HEAD as a list: Enter reset menu, `o` detached checkout, `A` cherry-pick |
 | `B` / `H` | blame / history of a commit's file |
 | the movement, fold and search keys of Status | |
@@ -197,6 +200,7 @@ Local branches, the current one starred, with ahead and behind.
 | `D` | delete the branch under the cursor if it is merged, as `git branch -d` does; otherwise refused, saying into what it is not merged |
 | `X` | force-delete it (`git branch -D`), after a question that says whether it is merged and how to get it back (`git branch NAME <old tip>`) |
 | `e` | rename it (`git branch -m`): a prompt starting from the current name |
+| `W` | the work trees: `a` add, `d` remove, `p` prune |
 | `M` | the remotes: `a` add, `d` remove, `r` rename, `u` set url, `p` prune, `f` fetch |
 
 The three are in the help (`?`) and the palette, not the hint row, which is
@@ -247,6 +251,22 @@ A flow is a state, not a mode. While one is under way:
   went. A merge in progress still allows committing: that is how it finishes;
 * the conflict list, the resolution view and the rebase todo editor are the
   overlays they always were, with their own keys.
+
+## Custom commands
+
+`;` in any mode opens the custom commands (lazygit's customCommands). They are read from three plain files, the
+first to bind a key winning: `.mgit-commands` in the work tree (meant to be committed), `mgit-commands` in the git
+directory (this clone only) and `$XDG_CONFIG_HOME/m31git/commands` (`~/.config/m31git/commands`). One command per
+line, three fields separated by a TAB: one key character, a label, the command (`sh -c` from the work tree root, on
+the terminal, Enter returns to mgit). A leading `?` on the command asks `y` first, a leading `-` does not wait for
+Enter. `#` starts a comment. Placeholders, shell-quoted, filled from the cursor: `{file}`, `{commit}`, `{short}`,
+`{branch}`, `{remote}` (the upstream's, else origin), `{stash}`.
+
+```
+t<TAB>run the tests<TAB>make test
+o<TAB>open the file<TAB>-xdg-open {file}
+r<TAB>revert it<TAB>?git revert --no-edit {commit}
+```
 
 ## The hint row
 

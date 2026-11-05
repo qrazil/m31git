@@ -109,6 +109,10 @@ import ui.GIT_ui_statusline;
 import ui.GIT_ui_stash;
 import ui.GIT_ui_tags;
 import ui.GIT_ui_logmenu;
+import ui.GIT_ui_bisect;
+import ui.GIT_ui_custom;
+import ui.GIT_ui_worktrees;
+import ui.GIT_ui_ignore;
 import ui.GIT_ui_reflog;
 import ui.GIT_ui_remotes;
 import ui.GIT_ui_undo;
@@ -702,6 +706,10 @@ TUI_app.Action State.run_commit_command(str cmd) {
         toggle_signoff();
         return TUI_app.Action.Redraw;
     }
+    if (cmd == GIT_ui_core.CMD_NOVERIFY) {
+        toggle_no_verify();
+        return TUI_app.Action.Redraw;
+    }
     if (cmd != GIT_ui_core.CMD_ABORT && is_blocked_by_sequence("commit")) {
         return TUI_app.Action.Redraw;
     }
@@ -1005,6 +1013,21 @@ TUI_app.Action State.run_outline_command(str cmd, str name) {
     }
     if (cmd == GIT_ui_core.CMD_LOGMENU) {
         GIT_ui_logmenu.open(core());
+    }
+    if (cmd == GIT_ui_core.CMD_WORKTREES) {
+        GIT_ui_worktrees.open(core());
+        return TUI_app.Action.Redraw;
+    }
+    if (cmd == GIT_ui_core.CMD_BISECT) {
+        GIT_ui_bisect.open(core());
+        return TUI_app.Action.Redraw;
+    }
+    if (cmd == GIT_ui_core.CMD_CUSTOM) {
+        GIT_ui_custom.open(core());
+        return TUI_app.Action.Redraw;
+    }
+    if (cmd == GIT_ui_core.CMD_IGNORE) {
+        GIT_ui_ignore.open(core());
     }
     if (cmd == GIT_ui_core.CMD_REMOTES) {
         GIT_ui_remotes.open(layer());

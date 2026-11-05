@@ -1,0 +1,472 @@
+// `git bisect` for mgit: find the first bad commit by testing commits half way between
+// a bad one and the good ones. The state is git's own (`BISECT_START`, `BISECT_LOG`,
+// `BISECT_TERMS`, `BISECT_NAMES`, `BISECT_EXPECTED_REV`, `BISECT_ANCESTORS_OK`,
+// `refs/bisect/bad`, `refs/bisect/good-<id>`, `refs/bisect/skip-<id>`), so
+// `git bisect good|bad|reset|log` carries on what this started and the other way round.
+//
+// The commit to test is picked as git's `find_bisection` does: of the commits that are
+// reachable from the bad one and not from a good one, the first one (oldest first) with
+// half of them below it, else the one that leaves the fewest in the worse half. On a
+// history without merges that is exactly git's choice, step for step; with merges it can
+// differ from git's by a commit while still halving the problem. `skip` is simple: the
+// next best commit that is not skipped. Terms are always good and bad.
+
+import fs;
+import io;
+import core.GIT_checkout;
+import core.GIT_graph;
+import core.GIT_object;
+import core.GIT_refs;
+import core.GIT_repository;
+import core.GIT_revparse;
+import diff.GIT_merge;
+
+pub type Step {
+    /// the commit now checked out for testing ("" when finished)
+    pub str next = "";
+    /// commits still to test after this one, and git's estimate of the steps
+    pub int left = 0;
+    pub int steps = 0;
+    /// the answer, once the bad commit is the only candidate
+    pub str first_bad = "";
+    /// every candidate was skipped
+    pub bool is_only_skipped = false;
+}
+
+pub type State {
+    pub str start;
+    pub str bad;
+    pub List<str> good;
+    pub List<str> skipped;
+}
+
+pub str start_path(str gitdir) {
+    return fs.join(GIT_repository.common(gitdir), "BISECT_START");
+}
+
+str file_in(str gitdir, str name) {
+    return fs.join(GIT_repository.common(gitdir), name);
+}
+
+pub bool is_active(str gitdir) {
+    return fs.is_present(start_path(gitdir));
+}
+
+str read_file(str path) {
+    match (io.read(path)) {
+        case Ok(str text): {
+            return text;
+        }
+        case Err(_): {
+            return "";
+        }
+    }
+}
+
+bool is_file_written(str path, str text) {
+    match (io.write(path, text)) {
+        case Ok: {
+            return true;
+        }
+        case Err(_): {
+            return false;
+        }
+    }
+}
+
+str ref_value(str gitdir, str name) {
+    match (GIT_refs.resolve(gitdir, name)) {
+        case Ok(str id): {
+            return id;
+        }
+        case Err(_): {
+            return "";
+        }
+    }
+}
+
+/// The bisection under way, if any.
+pub Option<State> state(str gitdir) {
+    if (!is_active(gitdir)) {
+        return Option<State>.None;
+    }
+    State found = State(read_file(start_path(gitdir)).trim(), "", [], []);
+    found.bad = ref_value(gitdir, "refs/bisect/bad");
+    match (GIT_refs.all(gitdir)) {
+        case Ok(List<GIT_refs.Ref> refs): {
+            for (GIT_refs.Ref ref in refs) {
+                if (ref.name.starts_with("refs/bisect/good-")) {
+                    found.good.push(ref.id);
+                }
+                if (ref.name.starts_with("refs/bisect/skip-")) {
+                    found.skipped.push(ref.id);
+                }
+            }
+        }
+        case Err(_): {
+        }
+    }
+    return Option<State>.Some(found);
+}
+
+int log2_floor(int value) {
+    int power = 0;
+    int rest = value;
+    while (rest > 1) {
+        rest = rest / 2;
+        power = power + 1;
+    }
+    return power;
+}
+
+/// git's `estimate_bisect_steps`.
+pub int estimate_steps(int all) {
+    if (all < 3) {
+        return 0;
+    }
+    int power = log2_floor(all);
+    int base = 1;
+    for (int i in 0 .. power) {
+        base = base * 2;
+    }
+    int x = all - base;
+    if (base < 3 * x) {
+        return power;
+    }
+    return power - 1;
+}
+
+/// The candidates, oldest first: reachable from `bad`, not from any good one.
+List<str> candidates(str gitdir, str bad, List<str> good) {
+    match (GIT_graph.rev_list(gitdir, [bad], good)) {
+        case Ok(List<str> newest_first): {
+            List<str> out = [];
+            for (int index in 0 .. newest_first.size()) {
+                out.push(newest_first[newest_first.size() - 1 - index]);
+            }
+            return out;
+        }
+        case Err(_): {
+            return [];
+        }
+    }
+}
+
+/// Which commit to test: its position in `list` and its weight, or -1.
+int pick(str gitdir, List<str> list, List<str> skipped, List<int> chosen_weight) {
+    int total = list.size();
+    Map<str, int> order = {};
+    for (int index in 0 .. total) {
+        order.set(list[index], index);
+    }
+    // weight = commits of the list reachable from it (itself included), oldest first
+    List<List<int>> below = [];
+    List<int> weight = [];
+    for (int index in 0 .. total) {
+        List<int> reach = [index];
+        match (GIT_merge.read_commit(gitdir, list[index])) {
+            case Ok(GIT_object.Commit commit): {
+                for (str parent in commit.parents) {
+                    match (order.get(parent)) {
+                        case Some(int place): {
+                            for (int member in below[place]) {
+                                if (!reach.contains(member)) {
+                                    reach.push(member);
+                                }
+                            }
+                        }
+                        case None: {
+                        }
+                    }
+                }
+            }
+            case Err(_): {
+            }
+        }
+        below.push(reach);
+        weight.push(reach.size());
+    }
+    int best = -1;
+    int best_distance = -1;
+    for (int index in 0 .. total) {
+        if (skipped.contains(list[index])) {
+            continue;
+        }
+        int difference = 2 * weight[index] - total;
+        if (difference >= -1 && difference <= 1) {
+            chosen_weight.push(weight[index]);
+            return index;
+        }
+    }
+    for (int index in 0 .. total) {
+        if (skipped.contains(list[index])) {
+            continue;
+        }
+        int distance = weight[index];
+        if (total - distance < distance) {
+            distance = total - distance;
+        }
+        if (distance > best_distance) {
+            best_distance = distance;
+            best = index;
+        }
+    }
+    if (best >= 0) {
+        chosen_weight.push(weight[best]);
+    }
+    return best;
+}
+
+str subject_of(str gitdir, str id) {
+    match (GIT_merge.read_commit(gitdir, id)) {
+        case Ok(GIT_object.Commit commit): {
+            str text = commit.message.utf8().or("");
+            int newline = text.index_of("\n").or(-1);
+            if (newline >= 0) {
+                return text.substr(0, newline);
+            }
+            return text;
+        }
+        case Err(_): {
+            return "";
+        }
+    }
+}
+
+void append_log(str gitdir, str line) {
+    str path = file_in(gitdir, "BISECT_LOG");
+    is_file_written(path, read_file(path) + line + "\n");
+}
+
+/// Choose and check out the next commit for the state in the repository.
+Result<Step, str> advance(str gitdir, str worktree) {
+    Option<State> found = state(gitdir);
+    if (!found.is_some()) {
+        return Result<Step, str>.Err("no bisect in progress");
+    }
+    State current = found.or(State("", "", [], []));
+    if (current.bad == "") {
+        return Result<Step, str>.Err("a bad commit is needed");
+    }
+    List<str> list = candidates(gitdir, current.bad, current.good);
+    Step step = Step();
+    if (list.size() <= 1) {
+        step.first_bad = current.bad;
+        append_log(gitdir, "# first bad commit: [" + current.bad + "] " + subject_of(gitdir, current.bad));
+        return Result<Step, str>.Ok(step);
+    }
+    List<int> weight = [];
+    int position = pick(gitdir, list, current.skipped, weight);
+    if (position < 0) {
+        step.is_only_skipped = true;
+        return Result<Step, str>.Ok(step);
+    }
+    step.next = list[position];
+    step.left = list.size() - weight[0] - 1;
+    step.steps = estimate_steps(list.size());
+    match (GIT_checkout.checkout(gitdir, worktree, step.next, "")) {
+        case Ok(_): {
+        }
+        case Err(GIT_checkout.Error error): {
+            return Result<Step, str>.Err("checkout of " + step.next.substr(0, 7) + " refused: " + error.to_str());
+        }
+    }
+    is_file_written(file_in(gitdir, "BISECT_EXPECTED_REV"), step.next + "\n");
+    return Result<Step, str>.Ok(step);
+}
+
+str quote_arg(str text) {
+    return "'" + text + "'";
+}
+
+/// `git bisect start <bad> <good>...`: `bad` and `goods` are revisions as typed.
+pub Result<Step, str> start(str gitdir, str worktree, str bad, List<str> goods) {
+    if (is_active(gitdir)) {
+        return Result<Step, str>.Err("a bisect is already under way (reset it first)");
+    }
+    str bad_id = "";
+    match (GIT_revparse.commit_id(gitdir, bad)) {
+        case Ok(str found): {
+            bad_id = found;
+        }
+        case Err(GIT_revparse.Error error): {
+            return Result<Step, str>.Err(bad + ": " + error.to_str());
+        }
+    }
+    List<str> good_ids = [];
+    for (str good in goods) {
+        match (GIT_revparse.commit_id(gitdir, good)) {
+            case Ok(str found): {
+                good_ids.push(found);
+            }
+            case Err(GIT_revparse.Error error): {
+                return Result<Step, str>.Err(good + ": " + error.to_str());
+            }
+        }
+    }
+    if (good_ids.size() == 0) {
+        return Result<Step, str>.Err("a good commit is needed");
+    }
+    // where to come back to: the branch, or the commit of a detached HEAD
+    str origin = "";
+    match (GIT_refs.head(gitdir)) {
+        case Ok(GIT_refs.Head head): {
+            match (head) {
+                case Born(str name, str id): {
+                    origin = name;
+                    if (origin.starts_with("refs/heads/")) {
+                        origin = origin.substr(11, origin.size());
+                    }
+                }
+                case Detached(str id): {
+                    origin = id;
+                }
+                case Unborn(_): {
+                    return Result<Step, str>.Err("there are no commits yet");
+                }
+            }
+        }
+        case Err(GIT_refs.Error error): {
+            return Result<Step, str>.Err(error.to_str());
+        }
+    }
+    for (str good_id in good_ids) {
+        match (GIT_graph.is_ancestor(gitdir, good_id, bad_id)) {
+            case Ok(bool is_below): {
+                if (!is_below) {
+                    return Result<Step, str>.Err(good_id.substr(0, 7) + " is not an ancestor of " + bad_id.substr(0, 7) + " (the merge-base check of git bisect is not done here)");
+                }
+            }
+            case Err(_): {
+            }
+        }
+    }
+    is_file_written(start_path(gitdir), origin + "\n");
+    is_file_written(file_in(gitdir, "BISECT_TERMS"), "bad\ngood\n");
+    is_file_written(file_in(gitdir, "BISECT_NAMES"), "\n");
+    is_file_written(file_in(gitdir, "BISECT_ANCESTORS_OK"), "");
+    str log = "# bad: [" + bad_id + "] " + subject_of(gitdir, bad_id) + "\n";
+    for (str good_id in good_ids) {
+        log = log + "# good: [" + good_id + "] " + subject_of(gitdir, good_id) + "\n";
+    }
+    List<str> quoted = [quote_arg(bad)];
+    for (str good in goods) {
+        quoted.push(quote_arg(good));
+    }
+    log = log + "git bisect start " + quoted.join(" ") + "\n";
+    is_file_written(file_in(gitdir, "BISECT_LOG"), log);
+    update_ref(gitdir, "refs/bisect/bad", bad_id);
+    for (str good_id in good_ids) {
+        update_ref(gitdir, "refs/bisect/good-" + good_id, good_id);
+    }
+    return advance(gitdir, worktree);
+}
+
+void update_ref(str gitdir, str name, str id) {
+    match (GIT_refs.update(gitdir, name, id, Option<str>.None)) {
+        case Ok(_): {
+        }
+        case Err(_): {
+        }
+    }
+}
+
+/// `git bisect good | bad | skip [<rev>]`: `kind` is "good", "bad" or "skip", `rev` ""
+/// for the commit being tested (HEAD).
+pub Result<Step, str> mark(str gitdir, str worktree, str kind, str rev) {
+    if (!is_active(gitdir)) {
+        return Result<Step, str>.Err("no bisect in progress");
+    }
+    str spec = rev;
+    if (spec == "") {
+        spec = "HEAD";
+    }
+    str id = "";
+    match (GIT_revparse.commit_id(gitdir, spec)) {
+        case Ok(str found): {
+            id = found;
+        }
+        case Err(GIT_revparse.Error error): {
+            return Result<Step, str>.Err(spec + ": " + error.to_str());
+        }
+    }
+    str heading = kind;
+    if (kind == "skip") {
+        heading = "skip";
+        update_ref(gitdir, "refs/bisect/skip-" + id, id);
+    } else if (kind == "good") {
+        update_ref(gitdir, "refs/bisect/good-" + id, id);
+    } else if (kind == "bad") {
+        update_ref(gitdir, "refs/bisect/bad", id);
+    } else {
+        return Result<Step, str>.Err("unknown mark " + kind);
+    }
+    append_log(gitdir, "# " + heading + ": [" + id + "] " + subject_of(gitdir, id));
+    append_log(gitdir, "git bisect " + kind + " " + id);
+    return advance(gitdir, worktree);
+}
+
+/// `git bisect reset`: back to where the bisect started, and the state removed.
+pub Result<bool, str> reset(str gitdir, str worktree) {
+    if (!is_active(gitdir)) {
+        return Result<bool, str>.Err("no bisect in progress");
+    }
+    str origin = read_file(start_path(gitdir)).trim();
+    str target_id = "";
+    str target_ref = "";
+    if (origin != "") {
+        if (GIT_refs.has_ref(gitdir, "refs/heads/" + origin)) {
+            target_ref = "refs/heads/" + origin;
+            target_id = ref_value(gitdir, target_ref);
+        } else {
+            target_id = origin;
+        }
+    }
+    if (target_id != "") {
+        match (GIT_checkout.checkout(gitdir, worktree, target_id, target_ref)) {
+            case Ok(_): {
+            }
+            case Err(GIT_checkout.Error error): {
+                return Result<bool, str>.Err("reset refused: " + error.to_str());
+            }
+        }
+    }
+    List<str> names = [];
+    match (GIT_refs.all(gitdir)) {
+        case Ok(List<GIT_refs.Ref> refs): {
+            for (GIT_refs.Ref ref in refs) {
+                if (ref.name.starts_with("refs/bisect/")) {
+                    names.push(ref.name);
+                }
+            }
+        }
+        case Err(_): {
+        }
+    }
+    str common = GIT_repository.common(gitdir);
+    for (str name in names) {
+        remove_file(fs.join(common, name));
+    }
+    remove_file(fs.join(fs.join(common, "refs"), "bisect"));
+    List<str> state_files = ["BISECT_START", "BISECT_LOG", "BISECT_TERMS", "BISECT_NAMES", "BISECT_EXPECTED_REV", "BISECT_ANCESTORS_OK"];
+    for (str file in state_files) {
+        remove_file(fs.join(common, file));
+    }
+    return Result<bool, str>.Ok(true);
+}
+
+void remove_file(str path) {
+    if (!fs.is_present(path)) {
+        return;
+    }
+    match (fs.remove(path)) {
+        case Ok: {
+        }
+        case Err(_): {
+        }
+    }
+}
+
+pub str log_text(str gitdir) {
+    return read_file(file_in(gitdir, "BISECT_LOG"));
+}

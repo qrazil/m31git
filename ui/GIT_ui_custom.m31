@@ -1,0 +1,252 @@
+// `;`: the custom commands (lazygit's customCommands). Shell commands you bind to a key,
+// read from up to three plain files, the first to bind a key winning:
+//
+//   <work tree>/.mgit-commands        the project's, meant to be committed
+//   <git dir>/mgit-commands           this clone's
+//   $XDG_CONFIG_HOME/m31git/commands  yours (~/.config/m31git/commands)
+//
+// One command per line, three fields separated by a TAB: the key (one character), a label,
+// and the command, run by `sh -c` from the work tree root on the terminal (so its output and
+// prompts are seen; Enter returns to mgit). A line starting with `#` is a comment. The
+// command may start with `?` (asks `y` first) or `-` (runs without waiting for Enter):
+//
+//   t<TAB>run the tests<TAB>make test
+//   o<TAB>open the file<TAB>-xdg-open {file}
+//   d<TAB>drop the commit<TAB>?git rebase --onto {commit}~ {commit}
+//
+// Placeholders, shell-quoted: {file} the path under the cursor, {commit} its full id and
+// {short} its short id (the commit under the cursor, in History), {branch} the branch under the
+// cursor or the current one, {remote} the upstream's remote (origin when none), {stash} the
+// stash under the cursor (stash@{n}). A placeholder with nothing to name is an empty string.
+
+import fs;
+import io;
+import os;
+import core.GIT_config;
+import ui.GIT_ui_core;
+import ui.GIT_ui_model;
+import ui.GIT_ui_panel;
+import ui.GIT_ui_prompt;
+import ui.GIT_ui_sequencer;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+import tui.widgets.TUI_outline;
+
+pub type Custom {
+    pub str key;
+    pub str label;
+    pub str command;
+    pub str source;
+}
+
+pub List<str> files(str gitdir, str worktree) {
+    List<str> out = [fs.join(worktree, ".mgit-commands"), fs.join(gitdir, "mgit-commands")];
+    str xdg = os.env("XDG_CONFIG_HOME").or("");
+    str home = os.env("HOME").or("");
+    if (xdg.starts_with("/")) {
+        out.push(fs.join(fs.join(xdg, "m31git"), "commands"));
+    } else if (home != "") {
+        out.push(fs.join(fs.join(fs.join(home, ".config"), "m31git"), "commands"));
+    }
+    return out;
+}
+
+/// Every command, in file order, a repeated key dropped.
+pub List<Custom> load(str gitdir, str worktree) {
+    List<Custom> out = [];
+    List<str> seen = [];
+    for (str file in files(gitdir, worktree)) {
+        if (!fs.is_present(file)) {
+            continue;
+        }
+        match (io.read(file)) {
+            case Ok(str body): {
+                for (str line in body.split("\n")) {
+                    if (line.trim() == "" || line.starts_with("#")) {
+                        continue;
+                    }
+                    List<str> fields = line.split("\t");
+                    if (fields.size() < 3 || fields[0].size() != 1 || seen.contains(fields[0])) {
+                        continue;
+                    }
+                    List<str> rest = [];
+                    for (int index in 2 .. fields.size()) {
+                        rest.push(fields[index]);
+                    }
+                    seen.push(fields[0]);
+                    out.push(Custom(fields[0], fields[1], rest.join("\t"), file));
+                }
+            }
+            case Err: {
+            }
+        }
+    }
+    return out;
+}
+
+str quoted(str text) {
+    return "'" + text.split("'").join("'\\''") + "'";
+}
+
+/// The command with its placeholders filled from what the cursor is on.
+pub str expand(GIT_ui_core.Core core, str command) {
+    str file = "";
+    str commit = "";
+    str branch = "";
+    str stash = "";
+    match (core.outline.current()) {
+        case Some(TUI_outline.Row row): {
+            str id = row.node.id;
+            match (core.paths.get(id)) {
+                case Some(bytes path): {
+                    file = path.utf8().or("");
+                }
+                case None: {
+                }
+            }
+            if (id.starts_with("commit:")) {
+                commit = GIT_ui_sequencer.commit_under_cursor(core);
+            }
+            if (id.starts_with("branch:")) {
+                branch = id.substr(7, id.size());
+            }
+            if (id.starts_with("stash:")) {
+                stash = "stash@{" + id.substr(6, id.size()) + "}";
+            }
+        }
+        case None: {
+        }
+    }
+    if (branch == "") {
+        for (GIT_ui_model.BranchRow row in core.branch_rows) {
+            if (row.branch.is_current) {
+                branch = row.branch.name;
+            }
+        }
+    }
+    str remote = "origin";
+    Option<str> configured = GIT_config.get(core.gitdir, "branch", branch, "remote");
+    if (configured.is_some() && configured.or("") != "" && configured.or("") != ".") {
+        remote = configured.or("");
+    }
+    str text = command;
+    text = text.split("{file}").join(quoted(file));
+    text = text.split("{commit}").join(quoted(commit));
+    text = text.split("{short}").join(quoted(GIT_ui_core.short_id(commit)));
+    text = text.split("{branch}").join(quoted(branch));
+    text = text.split("{remote}").join(quoted(remote));
+    text = text.split("{stash}").join(quoted(stash));
+    return text;
+}
+
+/// The shell line the terminal handoff runs.
+pub str script_for(str worktree, str command) {
+    return "cd " + quoted(worktree) + " && " + command;
+}
+
+type CustomMenu {
+    GIT_ui_core.Core host;
+    List<Custom> commands;
+}
+
+pub TUI_app.Action CustomMenu.handle_key(term.Code code) {
+    str name = code.to_str();
+    if (name == "escape") {
+        host.pop_overlay();
+        return TUI_app.Action.Redraw;
+    }
+    for (Custom custom in commands) {
+        if (custom.key == name) {
+            host.pop_overlay();
+            run(host, custom);
+            if (host.is_editor_wanted && host.net_verb != "") {
+                return TUI_app.Action.Quit;
+            }
+            return TUI_app.Action.Redraw;
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+pub void CustomMenu.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    TUI_geometry.Rect inner = GIT_ui_panel.frame(buffer, area, "custom commands (" + commands.size().to_str() + ")");
+    if (inner.is_empty()) {
+        return;
+    }
+    List<str> text = [];
+    for (Custom custom in commands) {
+        text.push(custom.key + "  " + custom.label + "   " + custom.command);
+    }
+    if (text.size() == 0) {
+        text = ["(none: see docs/MGIT-MODES.md, \"Custom commands\"; files .mgit-commands, .git/mgit-commands, ~/.config/m31git/commands)"];
+    }
+    GIT_ui_panel.draw_lines(buffer, inner, text, 0, -1);
+}
+
+pub List<GIT_ui_core.Hint> CustomMenu.hints() {
+    List<GIT_ui_core.Hint> out = [];
+    for (Custom custom in commands) {
+        out.push(GIT_ui_core.Hint(custom.key, custom.label));
+    }
+    out.push(GIT_ui_core.Hint("esc", "close"));
+    return out;
+}
+
+/// Run one command: ask first for a `?` one, hand the terminal over for the rest.
+pub void run(GIT_ui_core.Core core, Custom custom) {
+    str command = custom.command;
+    bool is_confirming = false;
+    str wait_flag = "wait";
+    if (command.starts_with("?")) {
+        is_confirming = true;
+        command = command.substr(1, command.size());
+    }
+    if (command.starts_with("-")) {
+        wait_flag = "nowait";
+        command = command.substr(1, command.size());
+    }
+    str line = script_for(core.worktree, expand(core, command));
+    if (is_confirming) {
+        core.push_overlay(CustomAsk(core, custom.label, line, wait_flag));
+        return;
+    }
+    core.request_net("sh", [line, wait_flag]);
+}
+
+type CustomAsk {
+    GIT_ui_core.Core host;
+    str label;
+    str line;
+    str wait_flag;
+}
+
+pub TUI_app.Action CustomAsk.handle_key(term.Code code) {
+    host.pop_overlay();
+    if (code.to_str() == "y") {
+        host.request_net("sh", [line, wait_flag]);
+        if (host.is_editor_wanted && host.net_verb != "") {
+            return TUI_app.Action.Quit;
+        }
+        return TUI_app.Action.Redraw;
+    }
+    host.say("cancelled: nothing was run");
+    return TUI_app.Action.Redraw;
+}
+
+pub void CustomAsk.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    TUI_geometry.Rect inner = GIT_ui_panel.frame(buffer, area, label + "?");
+    if (inner.is_empty()) {
+        return;
+    }
+    GIT_ui_panel.draw_lines(buffer, inner, [line, "", "y: yes, run it", "any other key: no"], 0, -1);
+}
+
+pub List<GIT_ui_core.Hint> CustomAsk.hints() {
+    return [GIT_ui_core.Hint("y", "run it"), GIT_ui_core.Hint("any", "cancel")];
+}
+
+pub void open(GIT_ui_core.Core core) {
+    core.push_overlay(CustomMenu(core, load(core.gitdir, core.worktree)));
+}

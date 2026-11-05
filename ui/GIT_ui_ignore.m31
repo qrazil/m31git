@@ -1,0 +1,178 @@
+// `I` in Status: ignore the file under the cursor (magit's `i`, lazygit's `i`). A menu:
+//   g add `/path` to the work tree's .gitignore       e add `*.ext` to .gitignore
+//   d add the file's directory (`dir/`) to .gitignore  x add `/path` to .git/info/exclude
+// A line already in the file is not added twice. Only untracked files can be ignored (git
+// keeps tracking a tracked file whatever .gitignore says: `git rm --cached` first). The
+// pattern is written with a final newline, after a newline if the file lacked one.
+
+import fs;
+import io;
+import core.GIT_gitwrite;
+import core.GIT_repository;
+import ui.GIT_ui_core;
+import ui.GIT_ui_sequencer;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+import tui.widgets.TUI_menu;
+import tui.widgets.TUI_outline;
+
+/// The path the cursor is on in Status ("" off a file row) and whether it is untracked.
+pub str path_under_cursor(GIT_ui_core.Core core, bool is_untracked_only) {
+    match (core.outline.current()) {
+        case Some(TUI_outline.Row row): {
+            str id = row.node.id;
+            bool is_untracked = id.starts_with("untracked:");
+            if (is_untracked || (!is_untracked_only && (id.starts_with("unstaged:") || id.starts_with("staged:")))) {
+                match (core.paths.get(id)) {
+                    case Some(bytes path): {
+                        return path.utf8().or("");
+                    }
+                    case None: {
+                    }
+                }
+            }
+        }
+        case None: {
+        }
+    }
+    return "";
+}
+
+/// Append `pattern` to the ignore file at `file`; false when it was there already.
+pub bool is_line_added(GIT_ui_core.Core core, str file, str pattern) {
+    str current = "";
+    if (fs.is_present(file)) {
+        match (io.read(file)) {
+            case Ok(str found): {
+                current = found;
+            }
+            case Err(io.Error error): {
+                core.say("ignore: cannot read " + file + ": " + error.to_str());
+                return false;
+            }
+        }
+    }
+    for (str line in current.split("\n")) {
+        if (line == pattern) {
+            core.say("ignore: " + pattern + " is already in " + GIT_gitwrite.basename(file));
+            return false;
+        }
+    }
+    str text = current;
+    if (text != "" && !text.ends_with("\n")) {
+        text = text + "\n";
+    }
+    str directory = GIT_gitwrite.dirname(file);
+    if (!fs.is_present(directory)) {
+        match (GIT_repository.ensure_dir(directory)) {
+            case Ok: {
+            }
+            case Err: {
+            }
+        }
+    }
+    match (io.write(file, text + pattern + "\n")) {
+        case Ok: {
+            return true;
+        }
+        case Err(io.Error error): {
+            core.say("ignore: cannot write " + file + ": " + error.to_str());
+            return false;
+        }
+    }
+}
+
+/// The index of the last byte `code` in `text`, or -1.
+int last_of(str text, int code) {
+    int found = -1;
+    for (int index in 0 .. text.size()) {
+        if (text.byte_at(index) == code) {
+            found = index;
+        }
+    }
+    return found;
+}
+
+str extension_pattern(str path) {
+    str name = path;
+    int slash = last_of(path, 47);
+    if (slash >= 0) {
+        name = path.substr(slash + 1, path.size());
+    }
+    int dot = last_of(name, 46);
+    if (dot <= 0) {
+        return "";
+    }
+    return "*" + name.substr(dot, name.size());
+}
+
+type IgnoreMenu {
+    GIT_ui_core.Core host;
+    str path;
+}
+
+pub TUI_app.Action IgnoreMenu.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_IGNORE, code)) {
+        case Some(str cmd): {
+            host.pop_overlay();
+            str gitignore = fs.join(host.worktree, ".gitignore");
+            str pattern = "";
+            str file = gitignore;
+            if (cmd == GIT_ui_core.CMD_IGNORE_FILE) {
+                pattern = "/" + path;
+            }
+            if (cmd == GIT_ui_core.CMD_IGNORE_EXT) {
+                pattern = extension_pattern(path);
+                if (pattern == "") {
+                    host.say("ignore: " + path + " has no extension");
+                    return TUI_app.Action.Redraw;
+                }
+            }
+            if (cmd == GIT_ui_core.CMD_IGNORE_DIR) {
+                int slash = last_of(path, 47);
+                if (slash < 0) {
+                    host.say("ignore: " + path + " is in the top directory (g ignores the file)");
+                    return TUI_app.Action.Redraw;
+                }
+                pattern = "/" + path.substr(0, slash + 1);
+            }
+            if (cmd == GIT_ui_core.CMD_IGNORE_EXCLUDE) {
+                pattern = "/" + path;
+                file = fs.join(fs.join(host.gitdir, "info"), "exclude");
+            }
+            if (pattern != "" && is_line_added(host, file, pattern)) {
+                host.log_command("ignore " + pattern + " (" + GIT_gitwrite.basename(file) + ")");
+                host.say("ignoring " + pattern + " in " + GIT_gitwrite.basename(file));
+                host.reload();
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+pub void IgnoreMenu.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("ignore " + path, GIT_ui_sequencer.items_of(GIT_ui_core.SCOPE_IGNORE));
+    which_key.render(buffer, area);
+}
+
+pub List<GIT_ui_core.Hint> IgnoreMenu.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_IGNORE);
+}
+
+pub void open(GIT_ui_core.Core core) {
+    str path = path_under_cursor(core, false);
+    if (path == "") {
+        core.say("ignore: put the cursor on a file");
+        return;
+    }
+    if (path_under_cursor(core, true) == "") {
+        core.say("ignore: " + path + " is tracked; git keeps tracking it whatever .gitignore says (git rm --cached first)");
+        return;
+    }
+    core.push_overlay(IgnoreMenu(core, path));
+}

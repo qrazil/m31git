@@ -9,6 +9,7 @@ import net.GIT_http_push;
 import net.GIT_gitfetch;
 import net.GIT_gitpush;
 import net.GIT_gitremote;
+import core.GIT_gitworktree;
 import ui.GIT_ui_prompt;
 import io;
 import os;
@@ -258,6 +259,24 @@ pub void RemoteLayer.run_net_now() {
         status = GIT_gitpush.run_push(worktree, [], args);
     } else if (verb == "remote") {
         status = GIT_gitremote.run_remote(worktree, [], args);
+    } else if (verb == "worktree") {
+        status = GIT_gitworktree.run_worktree(worktree, [], args);
+    } else if (verb == "sh") {
+        status = 2;
+        match (os.run(["sh", "-c", args[0]])) {
+            case Ok(os.ExitStatus ran): {
+                match (ran) {
+                    case Exited(int code): {
+                        status = code;
+                    }
+                    case Signaled(int sig): {
+                        status = 128 + sig;
+                    }
+                }
+            }
+            case Err(_): {
+            }
+        }
     } else {
         status = 2;
     }
@@ -268,7 +287,7 @@ pub void RemoteLayer.run_net_now() {
     }
     // Leave the output on screen until Enter, so an error can be read; a remote
     // edit that worked has nothing to read.
-    bool is_quiet_edit = status == 0 && verb == "remote" && args.size() > 0 && args[0] != "prune";
+    bool is_quiet_edit = (status == 0 && verb == "remote" && args.size() > 0 && args[0] != "prune") || (status == 0 && verb == "sh" && args.size() > 1 && args[1] == "nowait");
     if (!is_quiet_edit) {
         match (os.run(["sh", "-c", "printf 'press Enter to return to mgit ' >&2; read answer"])) {
             case Ok(_): {

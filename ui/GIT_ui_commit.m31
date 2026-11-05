@@ -11,6 +11,7 @@ import diff.GIT_merge;
 import core.GIT_object;
 import core.GIT_refs;
 import ui.GIT_ui_core;
+import ui.GIT_ui_hooks;
 import ui.GIT_ui_lines;
 import ui.GIT_ui_model;
 import io;
@@ -90,6 +91,16 @@ pub void CommitLayer.edit_message() {
 pub str CommitLayer.signoff_text() {
     GIT_object.Ident who = GIT_ui_model.committer_ident(gitdir);
     return GIT_ui_model.signoff_line(who.name.utf8().or(""), who.email.utf8().or(""));
+}
+
+/// `v` in the Commit mode: skip the commit hooks (`--no-verify`), or run them again.
+pub void CommitLayer.toggle_no_verify() {
+    is_no_verify = !is_no_verify;
+    if (is_no_verify) {
+        message = "hooks skipped: pre-commit and commit-msg will not run (v turns them back on)";
+    } else {
+        message = "hooks on: pre-commit, commit-msg and post-commit run";
+    }
 }
 
 /// `s` in the Commit mode: sign-off on or off for the commits made from here.
@@ -241,6 +252,18 @@ pub void CommitLayer.finish_commit() {
         message = GIT_config.GPGSIGN_REFUSAL + "; the message is kept at " + commit_message_path;
         return;
     }
+    if (!is_no_verify) {
+        str hook_name = "pre-commit";
+        if (is_merge) {
+            hook_name = "pre-merge-commit";
+        }
+        GIT_ui_hooks.Outcome pre = GIT_ui_hooks.run(gitdir, worktree, hook_name, []);
+        if (pre.did_run && pre.code != 0) {
+            message = hook_name + " hook failed (exit " + pre.code.to_str() + "): " + GIT_ui_hooks.last_line(pre.output) + " -- v skips hooks";
+            log_command(hook_name + " failed (" + pre.code.to_str() + ")");
+            return;
+        }
+    }
     str raw = "";
     if (is_merge && !GIT_merge.is_message_file_current(gitdir, commit_message_path)) {
         raw = GIT_merge.merge_message_text(gitdir);
@@ -267,6 +290,33 @@ pub void CommitLayer.finish_commit() {
     }
     if (is_signoff) {
         commit_message = GIT_ui_model.with_signoff(commit_message, signoff_text());
+    }
+    if (!is_no_verify && GIT_ui_hooks.has_hook(gitdir, worktree, "commit-msg")) {
+        match (io.write(commit_message_path, commit_message + "\n")) {
+            case Ok: {
+            }
+            case Err(io.Error error): {
+                message = "cannot write " + commit_message_path + ": " + error.to_str();
+                return;
+            }
+        }
+        GIT_ui_hooks.Outcome check = GIT_ui_hooks.run(gitdir, worktree, "commit-msg", [commit_message_path]);
+        if (check.code != 0) {
+            message = "commit-msg hook failed (exit " + check.code.to_str() + "): " + GIT_ui_hooks.last_line(check.output) + " -- v skips hooks";
+            log_command("commit-msg failed (" + check.code.to_str() + ")");
+            return;
+        }
+        match (io.read(commit_message_path)) {
+            case Ok(str edited): {
+                commit_message = GIT_ui_model.strip_comment_lines(edited);
+            }
+            case Err: {
+            }
+        }
+        if (commit_message == "") {
+            message = "aborting commit due to empty commit message (commit-msg hook)";
+            return;
+        }
     }
     GIT_index.Index index = GIT_ui_model.read_index(gitdir);
     if (is_merge) {
@@ -405,6 +455,12 @@ pub void CommitLayer.finish_commit() {
         message = "amended: HEAD is now " + commit_id.substr(0, 7);
     } else {
         message = "committed " + commit_id.substr(0, 7);
+    }
+    if (!is_no_verify) {
+        GIT_ui_hooks.Outcome post = GIT_ui_hooks.run(gitdir, worktree, "post-commit", []);
+        if (post.did_run && post.code != 0) {
+            message = message + " (post-commit hook exit " + post.code.to_str() + ": " + GIT_ui_hooks.last_line(post.output) + ")";
+        }
     }
     is_overlay_done = true;
     is_amending = false;

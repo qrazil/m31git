@@ -91,6 +91,9 @@ pub void draw_commit_panel(GIT_ui_core.Core core, TUI_buffer.Buffer buffer, TUI_
     if (y < bottom) {
         put(buffer, area, y, " Sign-off  " + signoff_line(core), TUI_style.Style());
     }
+    if (core.is_no_verify && y + 1 < bottom) {
+        put(buffer, area, y + 1, " Hooks     skipped (v runs them again)", TUI_style.Style());
+    }
     y = y + 2;
     int staged = core.last_status.staged.size();
     if (y < bottom) {

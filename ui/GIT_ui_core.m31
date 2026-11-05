@@ -107,6 +107,9 @@ pub const str SCOPE_PULL_ASK = "pull-ask";
 pub const str SCOPE_OVERVIEW = "overview";
 pub const str SCOPE_RESET = "reset";
 pub const str SCOPE_QUICK = "quick";
+pub const str SCOPE_BISECT = "bisect";
+pub const str SCOPE_WORKTREES = "worktrees";
+pub const str SCOPE_IGNORE = "ignore";
 pub const str SCOPE_REMOTES = "remotes";
 pub const str SCOPE_LOGMENU = "logmenu";
 pub const str SCOPE_REFLOG = "reflog";
@@ -252,6 +255,24 @@ pub const str CMD_RESET_MIXED = "reset-mixed";
 pub const str CMD_RESET_HARD = "reset-hard";
 pub const str CMD_DETACH = "detach";
 pub const str CMD_QUICK = "quick";
+pub const str CMD_BISECT = "bisect";
+pub const str CMD_BISECT_START = "bisect-start";
+pub const str CMD_BISECT_GOOD = "bisect-good";
+pub const str CMD_BISECT_BAD = "bisect-bad";
+pub const str CMD_BISECT_SKIP = "bisect-skip";
+pub const str CMD_BISECT_RESET = "bisect-reset";
+pub const str CMD_BISECT_LOG = "bisect-log";
+pub const str CMD_WORKTREES = "worktrees";
+pub const str CMD_WORKTREE_ADD = "worktree-add";
+pub const str CMD_WORKTREE_REMOVE = "worktree-remove";
+pub const str CMD_WORKTREE_PRUNE = "worktree-prune";
+pub const str CMD_CUSTOM = "custom";
+pub const str CMD_NOVERIFY = "noverify";
+pub const str CMD_IGNORE = "ignore";
+pub const str CMD_IGNORE_FILE = "ignore-file";
+pub const str CMD_IGNORE_EXT = "ignore-ext";
+pub const str CMD_IGNORE_DIR = "ignore-dir";
+pub const str CMD_IGNORE_EXCLUDE = "ignore-exclude";
 pub const str CMD_REMOTES = "remotes";
 pub const str CMD_PUSH_LEASE = "push-lease";
 pub const str CMD_PUSH_TAGS = "push-tags";
@@ -378,6 +399,8 @@ pub type Core {
     /// The Commit mode's sign-off toggle (`s`): add a `Signed-off-by:` trailer
     /// when the commit is made. Starts from `mgit.signoff`, off without it.
     pub bool is_signoff = false;
+    /// `v` in the Commit mode: the commit hooks are skipped (`--no-verify`).
+    pub bool is_no_verify = false;
     /// Where `n` (new branch) asks for the name: a file `$EDITOR` is launched
     /// on, exactly like `commit_message_path`, since there is no text-input
     /// widget to type into -- see `new_branch`.
@@ -1041,6 +1064,10 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_OUTLINE, CMD_REFLOG, ["L"], "the reflog of HEAD: every place HEAD has been; reset to one, check it out or cherry-pick it", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_LOGMENU, ["f"], "the log menu: filter by author, message, path or -S, the log of another revision, the graph column, a diff between two refs", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_REMOTES, ["M"], "the remotes: add, remove, rename, set the URL, prune, fetch", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_IGNORE, ["I"], "ignore the untracked file under the cursor: its path, its extension or its directory in .gitignore, or its path in .git/info/exclude", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_CUSTOM, [";"], "the custom commands: shell commands bound to keys in .mgit-commands, .git/mgit-commands or ~/.config/m31git/commands, with {file}, {commit}, {branch} filled from the cursor", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_WORKTREES, ["W"], "the work trees: add, remove, prune, and where each is", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_BISECT, ["t"], "bisect: find the commit that broke something (start, good, bad, skip, reset)", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_JUMP, ["J"], "show or hide the jump list", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_FOCUS, ["w"], "give the jump list the keys, or take them back", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_SEARCH, ["/"], "search the outline and the log (smart-case: lower case ignores case)", "", ""));
@@ -1098,6 +1125,7 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_COMMIT, CMD_FINISH, ["f"], "finish: write the commit", "", ""));
     table.push(Binding(SCOPE_COMMIT, CMD_AMEND, ["A"], "amend HEAD: its message prefilled, its parents and author kept", "", ""));
     table.push(Binding(SCOPE_COMMIT, CMD_ABORT, ["a"], "discard the draft message and the amend", "", ""));
+    table.push(Binding(SCOPE_COMMIT, CMD_NOVERIFY, ["v"], "skip the commit hooks (pre-commit, commit-msg, post-commit) for the commits made from here, or run them again (git commit --no-verify)", "", ""));
     table.push(Binding(SCOPE_COMMIT, CMD_SIGNOFF, ["s"], "sign-off on or off: add a Signed-off-by trailer (user.name and user.email) to the commit message", "", ""));
     // The branch overlay.
     table.push(Binding(SCOPE_RESET, CMD_RESET_SOFT, ["s"], "soft: move the branch only; the index and the files keep everything", "s", "soft"));
@@ -1133,6 +1161,25 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_REMOTES, CMD_REMOTE_PRUNE, ["p"], "prune the remote-tracking branches the remote no longer has, on the terminal", "p", "prune"));
     table.push(Binding(SCOPE_REMOTES, CMD_REMOTE_FETCH, ["f"], "fetch the remote on the terminal", "f", "fetch"));
     table.push(Binding(SCOPE_REMOTES, CMD_CLOSE, ["escape", "q"], "close", "q", "close"));
+    table.push(Binding(SCOPE_IGNORE, CMD_IGNORE_FILE, ["g"], "add /path to .gitignore", "g", "path in .gitignore"));
+    table.push(Binding(SCOPE_IGNORE, CMD_IGNORE_EXT, ["e"], "add *.ext to .gitignore", "e", "extension"));
+    table.push(Binding(SCOPE_IGNORE, CMD_IGNORE_DIR, ["d"], "add the file's directory (/dir/) to .gitignore", "d", "directory"));
+    table.push(Binding(SCOPE_IGNORE, CMD_IGNORE_EXCLUDE, ["x"], "add /path to .git/info/exclude (this clone only)", "x", "info/exclude"));
+    table.push(Binding(SCOPE_IGNORE, CMD_CLOSE, ["escape"], "close", "esc", "close"));
+    table.push(Binding(SCOPE_WORKTREES, CMD_DOWN, ["j", "down"], "next work tree", "j/k", "move"));
+    table.push(Binding(SCOPE_WORKTREES, CMD_UP, ["k", "up"], "previous work tree", "", ""));
+    table.push(Binding(SCOPE_WORKTREES, CMD_WORKTREE_ADD, ["a"], "add a work tree: a path, then a branch (git worktree add)", "a", "add"));
+    table.push(Binding(SCOPE_WORKTREES, CMD_WORKTREE_REMOVE, ["d"], "remove the work tree (asks first; never the main one)", "d", "remove"));
+    table.push(Binding(SCOPE_WORKTREES, CMD_WORKTREE_PRUNE, ["p"], "prune the records of work trees whose directory is gone", "p", "prune"));
+    table.push(Binding(SCOPE_WORKTREES, CMD_OPEN, ["enter"], "say the path to cd to", "enter", "path"));
+    table.push(Binding(SCOPE_WORKTREES, CMD_CLOSE, ["escape", "q"], "close", "q", "close"));
+    table.push(Binding(SCOPE_BISECT, CMD_BISECT_START, ["s"], "start: the bad revision (the commit under the cursor is offered), then a good one", "s", "start"));
+    table.push(Binding(SCOPE_BISECT, CMD_BISECT_GOOD, ["g"], "the commit being tested is good", "g", "good"));
+    table.push(Binding(SCOPE_BISECT, CMD_BISECT_BAD, ["b"], "the commit being tested is bad", "b", "bad"));
+    table.push(Binding(SCOPE_BISECT, CMD_BISECT_SKIP, ["k"], "skip the commit being tested (it cannot be tested)", "k", "skip"));
+    table.push(Binding(SCOPE_BISECT, CMD_BISECT_RESET, ["r"], "reset: end the bisect and go back to the branch you started on", "r", "reset"));
+    table.push(Binding(SCOPE_BISECT, CMD_BISECT_LOG, ["l"], "the log of the bisect so far (what git bisect log prints)", "l", "log"));
+    table.push(Binding(SCOPE_BISECT, CMD_CLOSE, ["escape"], "close", "esc", "close"));
     table.push(Binding(SCOPE_REFLOG, CMD_DOWN, ["j", "down"], "next entry", "j/k", "move"));
     table.push(Binding(SCOPE_REFLOG, CMD_UP, ["k", "up"], "previous entry", "", ""));
     table.push(Binding(SCOPE_REFLOG, CMD_REFLOG_RESET, ["enter", "G"], "reset the branch to the entry (soft, mixed, hard)", "enter", "reset"));
@@ -1478,6 +1525,15 @@ pub str scope_title(str scope) {
     if (scope == SCOPE_REMOTES) {
         return "remotes (Branches, M)";
     }
+    if (scope == SCOPE_IGNORE) {
+        return "ignore menu (Status, I)";
+    }
+    if (scope == SCOPE_WORKTREES) {
+        return "work trees (Branches, W)";
+    }
+    if (scope == SCOPE_BISECT) {
+        return "bisect menu (History, t)";
+    }
     if (scope == SCOPE_QUICK) {
         return "commit edit menu (History, E)";
     }
@@ -1489,7 +1545,7 @@ pub str scope_title(str scope) {
 
 /// Every scope, in the order the help overlay lists them.
 pub List<str> all_scopes() {
-    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET, SCOPE_QUICK, SCOPE_REFLOG, SCOPE_LOGMENU, SCOPE_REMOTES];
+    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET, SCOPE_QUICK, SCOPE_REFLOG, SCOPE_LOGMENU, SCOPE_REMOTES, SCOPE_IGNORE, SCOPE_WORKTREES, SCOPE_BISECT];
 }
 
 // --- the overlay stack and the command log -------------------------------------

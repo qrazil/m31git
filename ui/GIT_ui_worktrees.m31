@@ -1,0 +1,210 @@
+// `W` in Branches: the work trees. A list of the main work tree and every linked one
+// (`<git directory>/worktrees/*`) with what each has checked out, and
+//   a add (a path, then a branch: empty makes one named after the directory)
+//   d remove (asks)    p prune the records of work trees whose directory is gone
+//   Enter  say the path to `cd` to (mgit works on one repository at a time)
+// The changes are `git worktree add | remove | prune` run by the library's own `worktree`
+// command on the terminal, so git's checks and messages apply.
+
+import fs;
+import io;
+import core.GIT_refs;
+import core.GIT_repository;
+import ui.GIT_ui_core;
+import ui.GIT_ui_panel;
+import ui.GIT_ui_prompt;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+
+type Entry {
+    str path;
+    str head;
+    bool is_main;
+    bool is_locked;
+}
+
+type WorktreesOverlay {
+    GIT_ui_core.Core host;
+    List<Entry> entries = [];
+    int selected = 0;
+    int offset = 0;
+    str pending = "";
+}
+
+void WorktreesOverlay.load() {
+    entries = entries_of(host.gitdir);
+    if (selected >= entries.size()) {
+        selected = entries.size() - 1;
+    }
+    if (selected < 0) {
+        selected = 0;
+    }
+}
+
+pub TUI_app.Action WorktreesOverlay.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_WORKTREES, code)) {
+        case Some(str cmd): {
+            load();
+            if (cmd == GIT_ui_core.CMD_CLOSE) {
+                host.pop_overlay();
+            }
+            if (cmd == GIT_ui_core.CMD_DOWN && selected < entries.size() - 1) {
+                selected = selected + 1;
+            }
+            if (cmd == GIT_ui_core.CMD_UP && selected > 0) {
+                selected = selected - 1;
+            }
+            if (cmd == GIT_ui_core.CMD_WORKTREE_ADD) {
+                GIT_ui_prompt.open(host, this, "add-path", "new work tree's path (relative to the repository)");
+            }
+            if (cmd == GIT_ui_core.CMD_WORKTREE_PRUNE) {
+                host.request_net("worktree", ["prune", "-v"]);
+            }
+            if (cmd == GIT_ui_core.CMD_OPEN && entries.size() > 0) {
+                host.say("cd " + entries[selected].path + " && mgit");
+            }
+            if (cmd == GIT_ui_core.CMD_WORKTREE_REMOVE && entries.size() > 0) {
+                if (entries[selected].is_main) {
+                    host.say("worktree: the main work tree cannot be removed");
+                } else {
+                    GIT_ui_prompt.open(host, this, "remove", "remove work tree " + entries[selected].path + "? type y");
+                }
+            }
+            if (host.is_editor_wanted && host.net_verb != "") {
+                return TUI_app.Action.Quit;
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+/// The prompt's answer (`GIT_ui_prompt.Receiver`).
+pub void WorktreesOverlay.received(str purpose, str text) {
+    str answer = text.trim();
+    if (purpose == "add-path") {
+        if (answer == "") {
+            return;
+        }
+        pending = answer;
+        GIT_ui_prompt.open(host, this, "add-branch", "branch for " + answer + " (existing, or a new name; empty: named after the directory)");
+        return;
+    }
+    if (purpose == "add-branch" && pending != "") {
+        str path = pending;
+        pending = "";
+        if (answer == "") {
+            host.request_net("worktree", ["add", path]);
+        } else if (GIT_refs.has_ref(host.gitdir, "refs/heads/" + answer)) {
+            host.request_net("worktree", ["add", path, answer]);
+        } else {
+            host.request_net("worktree", ["add", "-b", answer, path]);
+        }
+        return;
+    }
+    if (purpose == "remove") {
+        load();
+        if (answer == "y" && entries.size() > 0 && !entries[selected].is_main) {
+            host.request_net("worktree", ["remove", entries[selected].path]);
+        } else {
+            host.say("worktree: not removed");
+        }
+    }
+}
+
+pub void WorktreesOverlay.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    load();
+    TUI_geometry.Rect inner = GIT_ui_panel.frame(buffer, area, "work trees (" + entries.size().to_str() + ")");
+    if (inner.is_empty()) {
+        return;
+    }
+    if (selected < offset) {
+        offset = selected;
+    }
+    if (selected >= offset + inner.height) {
+        offset = selected - inner.height + 1;
+    }
+    offset = GIT_ui_panel.clamp(offset, entries.size(), inner.height);
+    List<str> text = [];
+    for (Entry entry in entries) {
+        str mark = "  ";
+        if (entry.path == host.worktree) {
+            mark = "* ";
+        }
+        str lock = "";
+        if (entry.is_locked) {
+            lock = "  [locked]";
+        }
+        text.push(mark + entry.path + "  (" + entry.head + ")" + lock);
+    }
+    GIT_ui_panel.draw_lines(buffer, inner, text, offset, selected);
+}
+
+pub List<GIT_ui_core.Hint> WorktreesOverlay.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_WORKTREES);
+}
+
+str head_text(str common, str git_directory) {
+    str body = "";
+    match (io.read(fs.join(git_directory, "HEAD"))) {
+        case Ok(str text): {
+            body = text.trim();
+        }
+        case Err(_): {
+        }
+    }
+    if (body.starts_with("ref: refs/heads/")) {
+        return body.substr(16, body.size());
+    }
+    if (body.starts_with("ref: ")) {
+        return body.substr(5, body.size());
+    }
+    return "detached @ " + body.substr(0, 7);
+}
+
+pub List<Entry> entries_of(str gitdir) {
+    str common = GIT_repository.common(gitdir);
+    List<Entry> out = [];
+    str main_path = common;
+    if (main_path.ends_with("/.git")) {
+        main_path = main_path.substr(0, main_path.size() - 5);
+    }
+    out.push(Entry(main_path, head_text(common, common), true, false));
+    str base = fs.join(common, "worktrees");
+    match (fs.listdir(base)) {
+        case Ok(List<str> names): {
+            names.sort();
+            for (str name in names) {
+                str directory = fs.join(base, name);
+                if (!fs.is_directory(directory)) {
+                    continue;
+                }
+                str path = "(unknown)";
+                match (io.read(fs.join(directory, "gitdir"))) {
+                    case Ok(str body): {
+                        path = body.trim();
+                        if (path.ends_with("/.git")) {
+                            path = path.substr(0, path.size() - 5);
+                        }
+                    }
+                    case Err(_): {
+                    }
+                }
+                out.push(Entry(path, head_text(common, directory), false, fs.is_present(fs.join(directory, "locked"))));
+            }
+        }
+        case Err(_): {
+        }
+    }
+    return out;
+}
+
+pub void open(GIT_ui_core.Core core) {
+    WorktreesOverlay overlay = WorktreesOverlay(core);
+    overlay.load();
+    core.push_overlay(overlay);
+}

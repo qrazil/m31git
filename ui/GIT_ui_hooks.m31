@@ -1,0 +1,106 @@
+// git's commit hooks for the commits mgit makes itself: `pre-commit` (`pre-merge-commit`
+// for a merge commit), `commit-msg` and `post-commit`, from `core.hooksPath` or the
+// repository's `hooks` directory, run from the work tree root with `GIT_DIR` set, as
+// git runs them. Their output is captured (the screen is not theirs to write on) and
+// the last line of it goes into the message row. `v` in the Commit mode skips them
+// (`git commit --no-verify`).
+
+import fs;
+import io;
+import os;
+import core.GIT_config;
+import core.GIT_repository;
+
+pub type Outcome {
+    /// false: there is no such hook (or it is not executable)
+    pub bool did_run = false;
+    pub int code = 0;
+    pub str output = "";
+}
+
+pub str hooks_directory(str gitdir, str worktree) {
+    Option<str> configured = GIT_config.get(gitdir, "core", "", "hooksPath");
+    if (configured.is_some() && configured.or("") != "") {
+        str path = configured.or("");
+        if (path.starts_with("/")) {
+            return path;
+        }
+        return fs.join(worktree, path);
+    }
+    return fs.join(GIT_repository.common(gitdir), "hooks");
+}
+
+pub str hook_path(str gitdir, str worktree, str name) {
+    return fs.join(hooks_directory(gitdir, worktree), name);
+}
+
+/// Is there an executable hook called `name`?
+pub bool has_hook(str gitdir, str worktree, str name) {
+    match (fs.stat(hook_path(gitdir, worktree, name))) {
+        case Ok(fs.Stat stat): {
+            return stat.is_file() && stat.perm() & 0o111 != 0;
+        }
+        case Err(_): {
+            return false;
+        }
+    }
+}
+
+str quoted(str text) {
+    return "'" + text.split("'").join("'\\''") + "'";
+}
+
+/// Run hook `name` with `arguments`; the exit code and what it printed.
+pub Outcome run(str gitdir, str worktree, str name, List<str> arguments) {
+    if (!has_hook(gitdir, worktree, name)) {
+        return Outcome();
+    }
+    str capture = fs.join(gitdir, "M31GIT_HOOK_OUTPUT");
+    List<str> words = [quoted(hook_path(gitdir, worktree, name))];
+    for (str arg in arguments) {
+        words.push(quoted(arg));
+    }
+    str script = "cd " + quoted(worktree) + " && GIT_DIR=" + quoted(gitdir) + " && export GIT_DIR && exec " + words.join(" ") + " </dev/null >" + quoted(capture) + " 2>&1";
+    Outcome outcome = Outcome(did_run: true);
+    match (os.run(["sh", "-c", script])) {
+        case Ok(os.ExitStatus status): {
+            match (status) {
+                case Exited(int code): {
+                    outcome.code = code;
+                }
+                case Signaled(int sig): {
+                    outcome.code = 128 + sig;
+                }
+            }
+        }
+        case Err(io.Error error): {
+            outcome.code = 127;
+            outcome.output = error.to_str();
+        }
+    }
+    match (io.read(capture)) {
+        case Ok(str text): {
+            outcome.output = text;
+        }
+        case Err: {
+        }
+    }
+    match (fs.remove(capture)) {
+        case Ok: {
+        }
+        case Err: {
+        }
+    }
+    return outcome;
+}
+
+/// The last non-empty line of a hook's output, for the message row.
+pub str last_line(str output) {
+    str found = "";
+    for (str line in output.split("\n")) {
+        if (line.trim() != "") {
+            found = line.trim();
+        }
+    }
+    return found;
+}
