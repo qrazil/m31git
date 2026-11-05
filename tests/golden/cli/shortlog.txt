@@ -1,0 +1,14 @@
+usage: 1git -shortlog [options] [<REV>...]
+
+summarize the history by author
+
+arguments:
+  [<REV>...]                  where to start (default HEAD)
+
+options:
+       --help                 show this help
+  --s, --summary              only the number of commits per author
+  --n, --numbered             most commits first
+  --e, --email                show the email address too
+  --c, --committer            group by committer, not author
+       --merges only|exclude  only merge commits, or leave them out

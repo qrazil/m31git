@@ -602,3 +602,48 @@ conflict | git merge other >/dev/null 2>&1 | status
 conflict | git merge other >/dev/null 2>&1 | status -s
 conflict | git merge other >/dev/null 2>&1 | diff
 conflict | git merge other >/dev/null 2>&1 | log --merge --oneline
+# --- 0.37.0: reflog, shortlog, describe, check-ignore
+basic | - | reflog show --date=iso
+basic | - | reflog show topic
+basic | - | reflog show nonesuch
+basic | git switch -q topic | reflog
+basic | - | reflog list
+basic | - | reflog exists HEAD
+basic | - | reflog exists refs/heads/nonesuch
+basic | git switch -q topic | reflog delete HEAD@{0}
+basic | git switch -q topic | reflog expire --expire=now --all
+basic | git switch -q topic | reflog expire --expire=now HEAD
+basic | - | shortlog HEAD @@ x
+basic | - | shortlog -sn HEAD
+basic | - | shortlog -se HEAD
+basic | - | shortlog -c HEAD
+basic | - | shortlog v1..HEAD
+basic | - | shortlog -n topic main
+merge | - | shortlog --no-merges HEAD
+merge | - | shortlog --merges -s HEAD
+basic | - | shortlog @@ Author: Zed Z <z@x.org>\n\n    subject one\n\ncommit abc\nAuthor: Zed Z <z@x.org>\n\n    two\n
+basic | - | describe --tags HEAD~1
+basic | - | describe --tags --long
+basic | - | describe --tags --abbrev=10
+basic | - | describe --tags --abbrev=0
+basic | - | describe --match 'v1*' --tags
+basic | - | describe --tags --exclude 'v2'
+basic | - | describe --tags --exact-match HEAD~1
+basic | - | describe --exact-match HEAD
+basic | git tag light HEAD | describe --tags
+basic | git tag light HEAD | describe
+basic | git tag -d v2 | describe
+empty | - | describe
+empty | - | describe --always
+merge | - | describe --tags
+merge | - | describe --tags side
+basic | git tag -a -m n v3 HEAD~1 | describe --tags
+dirty | - | check-ignore x.log
+dirty | - | check-ignore x.log a.txt
+dirty | - | check-ignore -q x.log
+dirty | - | check-ignore a.txt
+dirty | - | check-ignore
+dirty | - | check-ignore --stdin @@ x.log\na.txt\n
+dirty | - | check-ignore -z x.log
+dirty | - | check-ignore empty-ish
+dirty | printf 'empty-ish/\n' >> .gitignore | check-ignore empty-ish empty-ish/sub/u.txt

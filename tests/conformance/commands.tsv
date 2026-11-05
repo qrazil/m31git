@@ -12,7 +12,7 @@ citool	porcelain	kept	missing	OUT	-	Tk GUI
 clean	porcelain	kept	partial	IMPLEMENT	P2	-i and -e missing
 clone	porcelain	kept	partial	IMPLEMENT	P1	--recurse-submodules, --reference, --shared, --local hardlinks missing
 commit	porcelain	kept	partial	IMPLEMENT	P1	-S (gpg/ssh signing via external tools) missing; --fixup/--squash/-C/-c/--interactive checked per option in the harness
-describe	porcelain	kept	missing	IMPLEMENT	P1	
+describe	porcelain	kept	partial	IMPLEMENT	P1	0.37: --tags --long --always --exact-match --abbrev --match --exclude; --dirty --broken --all --contains --first-parent --candidates missing
 diff	porcelain	kept	partial	IMPLEMENT	P1	--word-diff, --color-moved, --ext-diff, textconv, --submodule missing
 fetch	porcelain	kept	partial	IMPLEMENT	P1	--recurse-submodules, bundle-uri, protocol v0/v1 via file/git:// missing
 format-patch	porcelain	kept	missing	IMPLEMENT	P1	
@@ -35,7 +35,7 @@ restore	porcelain	kept	partial	IMPLEMENT	P1
 revert	porcelain	kept	partial	IMPLEMENT	P1	
 rm	porcelain	kept	partial	IMPLEMENT	P2	
 scalar	porcelain	kept	missing	OUT	-	Microsoft's wrapper around config/maintenance/sparse-checkout; the pieces are separate commands
-shortlog	porcelain	kept	missing	IMPLEMENT	P1	
+shortlog	porcelain	kept	partial	IMPLEMENT	P1	0.37: -s -n -e -c, revisions, --merges/--no-merges; -w, --group, --format and reading a log from standard input missing; .mailmap not applied
 show	porcelain	kept	partial	IMPLEMENT	P1	
 sparse-checkout	porcelain	kept (non-cone mode deprecated, see below)	missing	IMPLEMENT	P2	cone mode only: git-sparse-checkout.adoc "non-cone mode is deprecated"
 stash	porcelain	kept (stash save deprecated in favour of push)	partial	IMPLEMENT	P2	branch, create, store, export/import missing; save is not implemented
@@ -51,7 +51,7 @@ filter-branch	ancillary-manipulators	discouraged	missing	DROP	-	git-filter-branc
 mergetool	ancillary-manipulators	kept	missing	LATER	P3	launches external tools; needs the merge machinery of -merge
 pack-refs	ancillary-manipulators	kept	missing	IMPLEMENT	P3	
 prune	ancillary-manipulators	kept	missing	IMPLEMENT	P2	
-reflog	ancillary-manipulators	kept	missing	IMPLEMENT	P1	show/list/expire/delete/exists; the library (GIT_reflog) exists
+reflog	ancillary-manipulators	kept	partial	IMPLEMENT	P1	0.37: show (-n, --date), exists, delete, expire (--expire=now|never|date, --all), list; expire --expire-unreachable/--stale-fix/--updateref missing
 refs	ancillary-manipulators	kept	partial	IMPLEMENT	P3	1git -refs is its own listing; git refs verify/list/migrate missing
 remote	ancillary-manipulators	kept	partial	IMPLEMENT	P2	update, set-branches, prune done; show -n
 repack	ancillary-manipulators	kept	missing	IMPLEMENT	P2	
@@ -129,7 +129,7 @@ http-backend	plumbing-sync	kept	missing	OUT	-	CGI server side
 send-pack	plumbing-sync	kept	missing	IMPLEMENT	P3	
 update-server-info	plumbing-sync	kept	missing	LATER	P3	dumb HTTP only; not on git's removal list
 check-attr	helpers	kept	missing	IMPLEMENT	P2	
-check-ignore	helpers	kept	missing	IMPLEMENT	P1	the ignore matcher of the library exists
+check-ignore	helpers	kept	partial	IMPLEMENT	P1	0.37: paths, -q, --stdin, -z; -v and -n (which pattern matched) missing
 check-mailmap	helpers	kept	missing	IMPLEMENT	P3	
 check-ref-format	helpers	kept	done	IMPLEMENT	P2	0.31
 column	helpers	kept	missing	IMPLEMENT	P3	

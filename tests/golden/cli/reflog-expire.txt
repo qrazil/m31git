@@ -1,0 +1,13 @@
+usage: 1git -reflog-expire [options] [<REF>...]
+
+forget reflog entries older than a time
+
+arguments:
+  [<REF>...]          the refs (or --all)
+
+options:
+       --help         show this help
+       --all          every ref
+       --expire TIME  entries older than this (a date, 'now', 'never'; default 90 days)
+       --dry-run      only say what would go
+       --rewrite      make the next entry start where the deleted one did

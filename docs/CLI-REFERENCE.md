@@ -65,6 +65,14 @@ commands:
       -commit-tree             write a commit object for a tree
       -ls-files                list the files of the index and the work tree
       -check-ref-format        check that a ref name is well formed
+      -reflog                  show where a ref has been (HEAD by default)
+      -reflog-exists           exit 0 when a ref has a reflog, 1 when not
+      -reflog-delete           delete reflog entries: REF@{N}
+      -reflog-expire           forget reflog entries older than a time
+      -reflog-list             list the refs that have a reflog
+      -shortlog                summarize the history by author
+      -describe                name a commit after the nearest tag
+      -check-ignore            say which paths the ignore files ignore
       -cat-file                print an object's type, size or contents
       -ls-tree                 list a tree's entries
       -rev-parse               the object names a revision resolves to, and facts about the repository
@@ -165,6 +173,24 @@ options:
        --batch-check          for each name read from standard input print its header
        --batch-format FORMAT  like --batch, with a format: %(objectname) %(objecttype) %(objectsize) %(rest)
        --check-format FORMAT  like --batch-check, with a format
+```
+
+## -check-ignore
+
+```
+usage: 1git -check-ignore [options] [<PATH>...]
+
+say which paths the ignore files ignore
+
+arguments:
+  [<PATH>...]      the paths
+
+options:
+       --help      show this help
+  --q, --quiet     print nothing, just the exit status
+       --stdin     read the paths from standard input
+  --z, --nul       names end with NUL
+       --no-index  look at paths the index tracks too
 ```
 
 ## -check-ref-format
@@ -355,6 +381,27 @@ options:
        --default VALUE                       what a missing key reads as
        --show-origin                         show the file each value comes from
        --show-scope                          show the scope each value comes from
+```
+
+## -describe
+
+```
+usage: 1git -describe [options] [<COMMIT>...]
+
+name a commit after the nearest tag
+
+arguments:
+  [<COMMIT>...]           commits to name (default HEAD)
+
+options:
+       --help             show this help
+       --tags             use any tag, not only annotated ones
+       --long             always give the tag, the number of commits and the hash
+       --always           show the abbreviated hash when no tag fits
+       --exact-match      only a tag on exactly this commit
+       --abbrev N         digits of the hash (0: leave it out)
+       --match GLOB...    only tags that match
+       --exclude GLOB...  not tags that match
 ```
 
 ## -diff
@@ -760,6 +807,81 @@ options:
   --q, --quiet               print only errors
 ```
 
+## -reflog
+
+```
+usage: 1git -reflog [options] [<REF>]
+
+show where a ref has been (HEAD by default)
+
+arguments:
+  [<REF>]            the ref (default: HEAD)
+
+options:
+       --help        show this help
+  --n, --max N       stop after this many entries
+       --date STYLE  show the dates in the selectors: iso, short, relative, unix ...
+```
+
+## -reflog-delete
+
+```
+usage: 1git -reflog-delete [options] [<REF@{N}>...]
+
+delete reflog entries: REF@{N}
+
+arguments:
+  [<REF@{N}>...]  the entries
+
+options:
+       --help     show this help
+       --rewrite  make the next entry start where the deleted one did
+       --dry-run  only say what would go
+```
+
+## -reflog-exists
+
+```
+usage: 1git -reflog-exists <REF>
+
+exit 0 when a ref has a reflog, 1 when not
+
+arguments:
+  <REF>        the ref
+
+options:
+       --help  show this help
+```
+
+## -reflog-expire
+
+```
+usage: 1git -reflog-expire [options] [<REF>...]
+
+forget reflog entries older than a time
+
+arguments:
+  [<REF>...]          the refs (or --all)
+
+options:
+       --help         show this help
+       --all          every ref
+       --expire TIME  entries older than this (a date, 'now', 'never'; default 90 days)
+       --dry-run      only say what would go
+       --rewrite      make the next entry start where the deleted one did
+```
+
+## -reflog-list
+
+```
+usage: 1git -reflog-list
+
+list the refs that have a reflog
+
+options:
+       --help  show this help
+```
+
 ## -refs
 
 ```
@@ -1077,6 +1199,25 @@ options:
        --skip                leave out the commit that conflicts
        --abort               give up and go back
        --quit                forget the operation but keep the work tree as it is
+```
+
+## -shortlog
+
+```
+usage: 1git -shortlog [options] [<REV>...]
+
+summarize the history by author
+
+arguments:
+  [<REV>...]                  where to start (default HEAD)
+
+options:
+       --help                 show this help
+  --s, --summary              only the number of commits per author
+  --n, --numbered             most commits first
+  --e, --email                show the email address too
+  --c, --committer            group by committer, not author
+       --merges only|exclude  only merge commits, or leave them out
 ```
 
 ## -show

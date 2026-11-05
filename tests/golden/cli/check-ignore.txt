@@ -1,0 +1,13 @@
+usage: 1git -check-ignore [options] [<PATH>...]
+
+say which paths the ignore files ignore
+
+arguments:
+  [<PATH>...]      the paths
+
+options:
+       --help      show this help
+  --q, --quiet     print nothing, just the exit status
+       --stdin     read the paths from standard input
+  --z, --nul       names end with NUL
+       --no-index  look at paths the index tracks too
