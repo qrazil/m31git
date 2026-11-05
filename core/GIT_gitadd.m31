@@ -777,6 +777,9 @@ pub int run_mv(str start, List<str> overrides, List<str> argv) {
     str dest_rel = GIT_gitwrite.rooted(ctx.prefix, destination);
     bool is_dest_dir = GIT_gitwrite.kind_of(fs.join(ctx.root, dest_rel)) == 3;
     int count = words.size() - 1;
+    if (count == 1 && destination.ends_with("/") && !is_dest_dir) {
+        return GIT_gitcommon.fatal("destination directory does not exist, source=" + words[0] + ", destination=" + destination);
+    }
     if (count > 1 && !is_dest_dir) {
         return GIT_gitcommon.fatal("destination '" + destination + "' is not a directory");
     }

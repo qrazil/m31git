@@ -1,0 +1,13 @@
+usage: 1git -hash-object [options] [<FILE>...]
+
+the object name of a file, and optionally store it
+
+arguments:
+  [<FILE>...]         files to hash
+
+options:
+       --help         show this help
+  --t, --type TYPE    blob (default), tree, commit or tag
+  --w, --write        store the object
+       --stdin        hash what comes on standard input
+       --stdin-paths  read file names from standard input

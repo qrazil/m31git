@@ -1,0 +1,18 @@
+usage: 1git -for-each-ref [options] [<PATTERN>...]
+
+list refs with the fields you ask for
+
+arguments:
+  [<PATTERN>...]                 only refs under these prefixes or matching these globs
+
+options:
+       --help                    show this help
+       --count N                 stop after this many
+       --sort KEY...             order by this key (-key reverses)
+       --format FORMAT           what to print for each, with %(refname) %(objectname) %(subject) ...
+       --contains COMMIT...      only refs that contain this commit
+       --not-contains COMMIT...  only refs that do not contain this commit
+       --merged COMMIT...        only refs merged into this commit
+       --not-merged COMMIT...    only refs not merged into this commit
+       --points-at OBJECT...     only refs that name this object
+       --omit-empty              skip lines that came out empty

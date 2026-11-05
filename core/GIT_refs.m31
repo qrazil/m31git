@@ -517,7 +517,7 @@ bool is_safe_name(str name) {
 /// the new commit has the old one's parents -- and is `update` for anything
 /// else. A failure to write the log never fails the update: the ref is the
 /// state, the log is the history of it, and git itself treats the two this way.
-pub Result<bool, Error> update(str gitdir, str name, str new_id, Option<str> expect_old, str reflog_message = "") {
+pub Result<bool, Error> update(str gitdir, str name, str new_id, Option<str> expect_old, str reflog_message = "", bool is_exact = false) {
     if (!is_safe_name(name)) {
         return Result<bool, Error>.Err(Error.Malformed);
     }
@@ -545,7 +545,7 @@ pub Result<bool, Error> update(str gitdir, str name, str new_id, Option<str> exp
     }
     write_atomic(where_for(gitdir, name), new_id + "\n")?;
     str message = reflog_message;
-    if (message == "") {
+    if (message == "" && !is_exact) {
         message = inferred_message(gitdir, previous, new_id);
     }
     match (GIT_reflog.log_update(gitdir, name, previous, new_id, message)) {

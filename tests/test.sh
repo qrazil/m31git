@@ -56,6 +56,26 @@ fi
 
 LANGC=${LANGC:-./m31c}
 WORK=$(mktemp -d)
+# The test scripts that start servers each rewrite the EXIT trap with the pids
+# they know of, and the last one forgot some (leaked python servers). Every
+# server is started as `... &` with its pid in a variable named `*_pid`, so the
+# EXIT trap, whoever sets it, first kills every such pid (by pid, never by name).
+reap_servers() {
+    local name pid
+    for name in $(compgen -v | grep '_pid$'); do
+        pid=${!name:-}
+        case $pid in ''|*[!0-9]*) continue ;; esac
+        kill "$pid" >/dev/null 2>&1
+        wait "$pid" 2>/dev/null
+    done
+}
+trap() {
+    if [ "$#" -ge 2 ] && [ "$2" = EXIT ]; then
+        builtin trap "reap_servers; $1" EXIT
+    else
+        builtin trap "$@"
+    fi
+}
 trap 'rm -rf "$WORK"' EXIT
 
 # Hosts without GNU coreutils (macOS) get small stand-ins for the few GNU tools
@@ -398,6 +418,7 @@ source tests/test_mgit.sh
 source tests/test_uilines.sh
 source tests/test_sbs.sh
 source tests/test_cli.sh
+source tests/test_conformance.sh
 source tests/test_highlight.sh
 source tests/test_sections.sh
 source tests/test_stash.sh

@@ -15,8 +15,9 @@
 //     line in git's grammar (refused since 0.27.0) names.
 //
 // Several commands on one line run in the order typed and stop at the first
-// failure. A command that fails makes the program exit 1; a command line that
-// was not understood exits 2 and nothing has run.
+// failure. A command that fails makes the program exit with git's status for
+// it (128 fatal, 1 plain failure); a command line that was not understood
+// exits 2 and nothing has run.
 //
 // docs/CLI.md is the design, docs/MIGRATING-FROM-GIT.md the table.
 
@@ -26,6 +27,10 @@ import os;
 import fs;
 import text;
 import core.GIT_clitable;
+import core.GIT_gitconfigcmd;
+import core.GIT_gitplumb;
+import core.GIT_gitobj;
+import core.GIT_gitrefuse;
 import core.GIT_hash;
 import core.GIT_repository;
 import core.GIT_config;
@@ -81,7 +86,7 @@ pub str version_line() {
 pub Cli build() {
     args.Parser top = args.Parser(PROG, summary: "a git client: git's repositories, protocols and output, a command line of its own");
     top.version = version_line();
-    top.epilog = "exit status: 0 done, 1 a command failed (the commands after it did not run), 2 the line was not understood (nothing ran)\n" + "one dash is a command, two dashes an option, anything else data: 1git -add --all -commit --message 'fix' -push\n" + "an option's value cannot start with a dash: write --message=-x. Put an option that takes a list (--path, --message) after the operands.\n" + "from git: 1git -migrate 'git log --oneline -5' (docs/MIGRATING-FROM-GIT.md)";
+    top.epilog = "exit status: 0 done, git's own status when a command failed (128 fatal, 1 plain failure; the commands after it did not run), 2 the line was not understood (nothing ran)\n" + "one dash is a command, two dashes an option, anything else data: 1git -add --all -commit --message 'fix' -push\n" + "an option's value cannot start with a dash: write --message=-x. Put an option that takes a list (--path, --message) after the operands.\n" + "from git: 1git -migrate 'git log --oneline -5' (docs/MIGRATING-FROM-GIT.md)";
     top.value("dir", short: "C", help: "run as if started in this directory", placeholder: "DIR");
     top.values("config", short: "c", help: "set configuration for this run, like git -c", placeholder: "NAME=VALUE");
     top.value("git-dir", help: "the repository's git directory", placeholder: "DIR");
@@ -257,6 +262,10 @@ str default_remote(Env env, bool is_push) {
 /// refusals for combinations that make no sense. Returns the complaint.
 str adjust(GIT_clitable.Cmd cmd, args.Parsed parsed, Env env, List<str> opts, List<str> words, List<str> after) {
     str word = cmd.word;
+    if (word == "cat-file" && words.size() == 1 && opts.size() == 0) {
+        // `-cat-file OBJECT` prints the object, like -p
+        opts.push("-p");
+    }
     if (word == "switch") {
         bool has_create = parsed.is_given("create") || parsed.is_given("force-create");
         if (parsed.is_given("create") && parsed.is_given("force-create")) {
@@ -487,6 +496,26 @@ pub int run_git(str git, Env env, List<str> argv) {
     str cwd = env.cwd;
     List<str> overrides = env.overrides;
     List<str> given = precomposed(env, argv);
+    if (git != "init" && git != "clone" && git != "config" && git != "ls-remote" && git != "check-ref-format" && git != "hash-object") {
+        // a repository this program cannot read right (reftable, an unknown
+        // extension) is refused the way git refuses one, not misread
+        str found = "";
+        for (str entry in overrides) {
+            if (entry.starts_with("--git-dir=")) {
+                found = entry.substr(10, entry.size());
+            }
+        }
+        if (found == "") {
+            found = GIT_repository.find(cwd);
+        }
+        if (found != "") {
+            str refused = GIT_hash.refusal(found);
+            if (refused != "") {
+                io.eprint("fatal: " + refused);
+                return 128;
+            }
+        }
+    }
     if (git == "status") {
         return GIT_gitstatus.run(cwd, overrides, given);
     }
@@ -534,6 +563,51 @@ pub int run_git(str git, Env env, List<str> argv) {
     }
     if (git == "remote") {
         return GIT_gitremote.run_remote(cwd, overrides, given);
+    }
+    if (git == "merge-base") {
+        return GIT_gitplumb.run_merge_base(cwd, overrides, given);
+    }
+    if (git == "rev-list") {
+        return GIT_gitplumb.run_rev_list(cwd, overrides, given);
+    }
+    if (git == "symbolic-ref") {
+        return GIT_gitplumb.run_symbolic_ref(cwd, overrides, given);
+    }
+    if (git == "update-ref") {
+        return GIT_gitplumb.run_update_ref(cwd, overrides, given);
+    }
+    if (git == "show-ref") {
+        return GIT_gitplumb.run_show_ref(cwd, overrides, given);
+    }
+    if (git == "for-each-ref") {
+        return GIT_gitplumb.run_for_each_ref(cwd, overrides, given);
+    }
+    if (git == "hash-object") {
+        return GIT_gitplumb.run_hash_object(cwd, overrides, given);
+    }
+    if (git == "write-tree") {
+        return GIT_gitplumb.run_write_tree(cwd, overrides, given);
+    }
+    if (git == "commit-tree") {
+        return GIT_gitplumb.run_commit_tree(cwd, overrides, given);
+    }
+    if (git == "ls-files") {
+        return GIT_gitplumb.run_ls_files(cwd, overrides, given);
+    }
+    if (git == "check-ref-format") {
+        return GIT_gitplumb.run_check_ref_format(cwd, overrides, given);
+    }
+    if (git == "cat-file") {
+        return GIT_gitobj.run_cat_file(cwd, overrides, given);
+    }
+    if (git == "ls-tree") {
+        return GIT_gitobj.run_ls_tree(cwd, overrides, given);
+    }
+    if (git == "rev-parse") {
+        return GIT_gitobj.run_rev_parse(cwd, overrides, given);
+    }
+    if (git == "config") {
+        return GIT_gitconfigcmd.run_config(cwd, overrides, given);
     }
     if (git == "ls-remote") {
         return GIT_gitremote.run_ls_remote(cwd, overrides, given);
@@ -591,7 +665,7 @@ int execute(Job job, Env env) {
     if (word == "migrate") {
         return migrate_command(job.parsed, env);
     }
-    if (word == "cat-file" || word == "ls-tree" || word == "rev-parse" || word == "refs") {
+    if (word == "refs") {
         return run_plumbing(job, env);
     }
     return run_git(job.cmd.git, env, job.argv);
@@ -628,7 +702,11 @@ pub int run_line(Cli cli, args.Parsed parsed) {
     for (Job job in jobs) {
         int status = execute(job, env);
         if (status != 0) {
-            return 1;
+            // git's own status goes out unchanged (128 for a fatal error, 129
+            // for a usage error of the command, 1 for `diff --exit-code`...):
+            // a script written against git reads the same numbers. 2 stays the
+            // command line of 1git itself not being understood.
+            return status;
         }
     }
     return 0;
@@ -659,8 +737,28 @@ pub int start(List<str> argv) {
             }
         }
     }
+    // a git command 1git does not run (dropped, out of scope, planned): git's
+    // kind of refusal, a fatal error
+    for (str word in argv) {
+        if (word.starts_with("-") && !word.starts_with("--") && word.size() > 1) {
+            str name = word.substr(1, word.size());
+            if (!is_table_command(cli, name) && GIT_gitrefuse.refusal(name) != "") {
+                io.eprint("fatal: " + GIT_gitrefuse.refusal(name));
+                return 128;
+            }
+        }
+    }
     args.Parsed parsed = cli.top.parse_or_exit(argv, status: 2);
     return run_line(cli, parsed);
+}
+
+bool is_table_command(Cli cli, str name) {
+    for (GIT_clitable.Cmd candidate in cli.cmds) {
+        if (candidate.word == name || candidate.short == name) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /// A line in git's grammar, for the program's own re-runs only (see `start`):
@@ -729,7 +827,7 @@ bool is_in(str word, str choices) {
 }
 
 List<str> git_words() {
-    return ["status", "log", "show", "diff", "add", "rm", "mv", "restore", "reset", "commit", "switch", "checkout", "branch", "tag", "stash", "cherry-pick", "revert", "merge", "rebase", "clean", "worktree", "clone", "init", "fetch", "pull", "push", "remote", "ls-remote", "cat-file", "ls-tree", "rev-parse"];
+    return ["status", "log", "show", "diff", "add", "rm", "mv", "restore", "reset", "commit", "switch", "checkout", "branch", "tag", "stash", "cherry-pick", "revert", "merge", "rebase", "clean", "worktree", "clone", "init", "fetch", "pull", "push", "remote", "ls-remote", "cat-file", "ls-tree", "rev-parse", "config", "merge-base", "rev-list", "symbolic-ref", "update-ref", "show-ref", "for-each-ref", "hash-object", "write-tree", "commit-tree", "ls-files", "check-ref-format"];
 }
 
 /// The index of the git command in `argv` once git's own leading options
@@ -1120,8 +1218,24 @@ List<str> assemble(Rewrite work, List<str> operands) {
     GIT_clitable.append(out, work.scalars);
     GIT_clitable.append(out, operands);
     for (str name in work.list_names) {
-        out.push(option_text(name));
-        GIT_clitable.append(out, work.list_values.get(name).or([]));
+        // a list goes after the operands; an element that starts with a dash
+        // is written `--name=-x`
+        List<str> elements = work.list_values.get(name).or([]);
+        if (elements.size() == 0) {
+            out.push(option_text(name));
+        }
+        for (int at in 0 .. elements.size()) {
+            str element = elements[at];
+            bool is_dashed = element.starts_with("-") && element != "-" && !is_digits(element.substr(1, element.size()));
+            if (is_dashed) {
+                out.push(option_text(name) + "=" + element);
+            } else if (at == 0) {
+                out.push(option_text(name));
+                out.push(element);
+            } else {
+                out.push(element);
+            }
+        }
     }
     return out;
 }
@@ -1306,7 +1420,15 @@ Result<List<str>, str> rewrite_command(Cli cli, Env env, str git, List<str> rest
     } else if (git == "mv") {
         word = "move";
     } else if (git == "checkout") {
-        return rewrite_checkout(cli, env, rest);
+        // a branch or a file is -switch or -restore; what neither can say
+        // (a commit that is detached by accident, -p, --ours ...) is -checkout
+        match (rewrite_checkout(cli, env, rest)) {
+            case Ok(List<str> line): {
+                return Result<List<str>, str>.Ok(line);
+            }
+            case Err(_): {
+            }
+        }
     } else if (git == "reset") {
         return rewrite_reset(cli, env, rest);
     }
@@ -1331,6 +1453,34 @@ Result<List<str>, str> shape(Env env, Rewrite work) {
                 operands.push(one);
             } else {
                 paths.push(one);
+            }
+        }
+        GIT_clitable.append(paths, work.after);
+        if (paths.size() > 0) {
+            add_list(work, "path", paths);
+        }
+    } else if (word == "checkout") {
+        // the target, then the paths to restore from it
+        List<str> paths = [];
+        for (int at in 0 .. every.size()) {
+            if (at == 0 && is_revision(env, every[at])) {
+                operands.push(every[at]);
+            } else {
+                paths.push(every[at]);
+            }
+        }
+        GIT_clitable.append(paths, work.after);
+        if (paths.size() > 0) {
+            add_list(work, "path", paths);
+        }
+    } else if (word == "ls-tree") {
+        // the tree, then the paths
+        List<str> paths = [];
+        for (int at in 0 .. every.size()) {
+            if (at == 0) {
+                operands.push(every[at]);
+            } else {
+                paths.push(every[at]);
             }
         }
         GIT_clitable.append(paths, work.after);

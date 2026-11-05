@@ -1,0 +1,20 @@
+usage: 1git -ls-files [options] [<PATH>...]
+
+list the files of the index and the work tree
+
+arguments:
+  [<PATH>...]              only these paths
+
+options:
+       --help              show this help
+  --c, --cached            files in the index (the default)
+  --d, --deleted           files in the index that are gone from the work tree
+  --m, --modified          files that differ from the index
+  --o, --others            files git does not track
+  --i, --ignored           with --others or --cached: only the ignored ones
+  --s, --stage             show mode, object name and stage
+  --u, --unmerged          files with merge conflicts
+  --z, --nul               end each name with NUL
+       --full-name         names from the top of the work tree, not relative to here
+       --error-unmatch     fail when a path matches no tracked file
+       --exclude-standard  leave out what the ignore files list

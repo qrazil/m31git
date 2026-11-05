@@ -19,6 +19,7 @@ commands:
       -reset                   move the current branch to another commit
   -c, -commit                  record the staged changes as a commit
   -w, -switch                  change branch
+      -checkout                switch branches or restore files, git's way (see -switch and -restore)
   -b, -branch                  list, create, rename and delete branches
   -t, -tag                     list, create and delete tags
       -stash                   put the changes away, leaving a clean work tree
@@ -52,9 +53,21 @@ commands:
       -remote-prune            delete remote-tracking refs the remote no longer has
       -remote-set-head         set what the remote's HEAD is here
       -remote-refs             list the refs of a remote without fetching
+      -config                  read, write, list and remove configuration
+      -merge-base              the best common ancestor of two commits
+      -rev-list                list the commits reachable from revisions, newest first
+      -symbolic-ref            read, set or delete a symbolic ref such as HEAD
+      -update-ref              set, move or delete a ref, checking what it was
+      -show-ref                list refs with the objects they name
+      -for-each-ref            list refs with the fields you ask for
+      -hash-object             the object name of a file, and optionally store it
+      -write-tree              write the index as a tree object
+      -commit-tree             write a commit object for a tree
+      -ls-files                list the files of the index and the work tree
+      -check-ref-format        check that a ref name is well formed
       -cat-file                print an object's type, size or contents
       -ls-tree                 list a tree's entries
-      -rev-parse               the object names a revision resolves to
+      -rev-parse               the object names a revision resolves to, and facts about the repository
       -refs                    every ref in the repository, with what it points at
       -migrate                 write a git command line the 1git way
 
@@ -67,7 +80,7 @@ options:
        --work-tree DIR         the work tree, when it is not next to the git directory
        --completions SHELL     print a shell completion script (bash, zsh or fish) and exit
 
-exit status: 0 done, 1 a command failed (the commands after it did not run), 2 the line was not understood (nothing ran)
+exit status: 0 done, git's own status when a command failed (128 fatal, 1 plain failure; the commands after it did not run), 2 the line was not understood (nothing ran)
 one dash is a command, two dashes an option, anything else data: 1git -add --all -commit --message 'fix' -push
 an option's value cannot start with a dash: write --message=-x. Put an option that takes a list (--path, --message) after the operands.
 from git: 1git -migrate 'git log --oneline -5' (docs/MIGRATING-FROM-GIT.md)
@@ -134,18 +147,66 @@ options:
 ## -cat-file
 
 ```
-usage: 1git -cat-file [options] <OBJECT>
+usage: 1git -cat-file [options] [<TYPE or OBJECT>] [<OBJECT>]
 
 print an object's type, size or contents
 
 arguments:
-  <OBJECT>       a revision that names an object: an object name or a prefix of one, a ref, HEAD:path, ...
+  [<TYPE or OBJECT>]          with two operands the type to print the object as (blob, tree, commit, tag), else the object
+  [<OBJECT>]                  an object name, a prefix of one, a ref, HEAD:path, ...
 
 options:
-       --help    show this help
-       --type    print the object's type word
-       --size    print the size of the object's content
-       --pretty  print the object itself (the default)
+       --help                 show this help
+  --t, --type                 print the object's type word
+  --s, --size                 print the size of the object's content
+  --p, --pretty               print the object in a readable form
+  --e, --exists               print nothing; exit 0 when the object exists
+       --batch                for each name read from standard input print its header and contents
+       --batch-check          for each name read from standard input print its header
+       --batch-format FORMAT  like --batch, with a format: %(objectname) %(objecttype) %(objectsize) %(rest)
+       --check-format FORMAT  like --batch-check, with a format
+```
+
+## -check-ref-format
+
+```
+usage: 1git -check-ref-format [options] <NAME>
+
+check that a ref name is well formed
+
+arguments:
+  <NAME>                  the name
+
+options:
+       --help             show this help
+       --allow-onelevel   accept a name without a slash
+       --refspec-pattern  accept one * in the name
+       --normalize        print the name with extra slashes removed
+       --branch           check a branch name and print it
+```
+
+## -checkout
+
+```
+usage: 1git -checkout [options] [<REV>]
+
+switch branches or restore files, git's way (see -switch and -restore)
+
+arguments:
+  [<REV>]                   a branch or a revision to check out (default: stay)
+
+options:
+       --help               show this help
+       --path PATH...       restore only these paths from the target (put it last)
+  --b, --create NAME        create a branch and switch to it
+  --B, --reset-create NAME  create or reset a branch and switch to it
+  --d, --detach             detach HEAD at the target
+  --f, --force              throw local changes away
+       --ours               for paths in a merge: take our side
+       --theirs             for paths in a merge: take their side
+  --t, --track              set the upstream of a new branch
+  --p, --patch              choose the hunks to restore
+  --q, --quiet              print nothing
 ```
 
 ## -cherry-pick
@@ -249,6 +310,53 @@ options:
        --path PATH...                                        commit only the changes to these paths (put it last)
 ```
 
+## -commit-tree
+
+```
+usage: 1git -commit-tree [options] <TREE>
+
+write a commit object for a tree
+
+arguments:
+  <TREE>                   the tree
+
+options:
+       --help              show this help
+  --p, --parent COMMIT...  a parent commit
+  --m, --message TEXT...   the message: each text is a paragraph (default: standard input)
+  --F, --file FILE...      read the message from a file ('-' is standard input)
+```
+
+## -config
+
+```
+usage: 1git -config [options] [<NAME [VALUE]>...]
+
+read, write, list and remove configuration
+
+arguments:
+  [<NAME [VALUE]>...]                        a key to read, or a key and a value to write
+
+options:
+       --help                                show this help
+  --l, --list                                every key and value in effect
+       --get                                 read one key: the last value (the default with one operand)
+       --get-all                             read every value of a key
+       --regexp                              read every key that matches a pattern
+       --unset                               remove a key
+       --unset-all                           remove every value of a key
+       --add                                 add a value, keeping the others
+       --replace-all                         replace every value of a key
+       --scope local|global|system|worktree  which file to read or write (default: read all, write local)
+  --f, --file FILE                           read or write this file
+       --type bool|int|path|bool-or-int      show or store the value as this type
+       --names-only                          show names without values
+  --z, --nul                                 end each record with NUL
+       --default VALUE                       what a missing key reads as
+       --show-origin                         show the file each value comes from
+       --show-scope                          show the scope each value comes from
+```
+
 ## -diff
 
 ```
@@ -315,6 +423,47 @@ options:
        --dry-run          show what would be fetched
   --q, --quiet            print nothing
   --v, --verbose          say more
+```
+
+## -for-each-ref
+
+```
+usage: 1git -for-each-ref [options] [<PATTERN>...]
+
+list refs with the fields you ask for
+
+arguments:
+  [<PATTERN>...]                 only refs under these prefixes or matching these globs
+
+options:
+       --help                    show this help
+       --count N                 stop after this many
+       --sort KEY...             order by this key (-key reverses)
+       --format FORMAT           what to print for each, with %(refname) %(objectname) %(subject) ...
+       --contains COMMIT...      only refs that contain this commit
+       --not-contains COMMIT...  only refs that do not contain this commit
+       --merged COMMIT...        only refs merged into this commit
+       --not-merged COMMIT...    only refs not merged into this commit
+       --points-at OBJECT...     only refs that name this object
+       --omit-empty              skip lines that came out empty
+```
+
+## -hash-object
+
+```
+usage: 1git -hash-object [options] [<FILE>...]
+
+the object name of a file, and optionally store it
+
+arguments:
+  [<FILE>...]         files to hash
+
+options:
+       --help         show this help
+  --t, --type TYPE    blob (default), tree, commit or tag
+  --w, --write        store the object
+       --stdin        hash what comes on standard input
+       --stdin-paths  read file names from standard input
 ```
 
 ## -init
@@ -399,18 +548,54 @@ options:
        --path PATH...                                         only commits that touch these paths (put it last)
 ```
 
+## -ls-files
+
+```
+usage: 1git -ls-files [options] [<PATH>...]
+
+list the files of the index and the work tree
+
+arguments:
+  [<PATH>...]              only these paths
+
+options:
+       --help              show this help
+  --c, --cached            files in the index (the default)
+  --d, --deleted           files in the index that are gone from the work tree
+  --m, --modified          files that differ from the index
+  --o, --others            files git does not track
+  --i, --ignored           with --others or --cached: only the ignored ones
+  --s, --stage             show mode, object name and stage
+  --u, --unmerged          files with merge conflicts
+  --z, --nul               end each name with NUL
+       --full-name         names from the top of the work tree, not relative to here
+       --error-unmatch     fail when a path matches no tracked file
+       --exclude-standard  leave out what the ignore files list
+```
+
 ## -ls-tree
 
 ```
-usage: 1git -ls-tree <TREE>
+usage: 1git -ls-tree [options] <TREE>
 
 list a tree's entries
 
 arguments:
-  <TREE>       a tree, or anything that names one: a commit, a tag, HEAD~2, v1:dir
+  <TREE>               a tree, or anything that names one: a commit, a tag, HEAD~2, v1:dir
 
 options:
-       --help  show this help
+       --help          show this help
+       --path PATH...  only these paths (put it last)
+  --r, --recursive     go into subtrees
+  --t, --trees         with --recursive: show the trees too
+  --d, --only-trees    show only the trees, not what is in them
+  --l, --long          show the size of each file
+  --z, --nul           end each name with NUL, unquoted
+       --names-only    show only the names
+       --objects-only  show only the object names
+       --abbrev N      shorten the object names to this many digits
+       --full-name     names from the top of the tree (the default from the top)
+       --full-tree     list the whole tree, not what is below the current directory
 ```
 
 ## -merge
@@ -438,6 +623,23 @@ options:
        --abort                                give up the merge and go back
        --quit                                 forget the merge but keep the work tree as it is
   --q, --quiet                                print only errors
+```
+
+## -merge-base
+
+```
+usage: 1git -merge-base [options] <COMMIT> <COMMIT>
+
+the best common ancestor of two commits
+
+arguments:
+  <COMMIT>            a commit
+  <COMMIT>            another commit
+
+options:
+       --help         show this help
+  --a, --all          every best common ancestor, not just one
+       --is-ancestor  print nothing; exit 0 when the first is an ancestor of the second, 1 when not
 ```
 
 ## -migrate
@@ -789,18 +991,68 @@ options:
   --q, --quiet     print nothing
 ```
 
+## -rev-list
+
+```
+usage: 1git -rev-list [options] [<REV>...]
+
+list the commits reachable from revisions, newest first
+
+arguments:
+  [<REV>...]                  where to start: branches, tags, commits, ranges (a..b), ^excluded
+
+options:
+       --help                 show this help
+  --n, --max N                stop after this many commits
+       --skip N               skip this many commits first
+       --count                print how many commits there are
+       --reverse              oldest first
+       --parents              print the parents after each commit
+       --merges only|exclude  only merge commits, or leave them out
+       --all                  start from every ref and HEAD
+       --branches             start from every branch
+       --tags                 start from every tag
+       --remotes              start from every remote-tracking branch
+```
+
 ## -rev-parse
 
 ```
-usage: 1git -rev-parse <REV>
+usage: 1git -rev-parse [options] [<REV>...]
 
-the object names a revision resolves to
+the object names a revision resolves to, and facts about the repository
 
 arguments:
-  <REV>        a revision: a ref, an object name, HEAD~2, main^{tree}, v1:path, A..B, ...
+  [<REV>...]                 revisions: a ref, an object name, HEAD~2, main^{tree}, v1:path, A..B, ...
 
 options:
-       --help  show this help
+       --help                show this help
+       --git-dir             the git directory
+       --absolute-git-dir    the git directory, absolute
+       --git-common-dir      the directory shared by the linked work trees
+       --toplevel            the top of the work tree
+       --prefix              where this directory is below the top, with a slash
+       --cdup                the way up to the top: ../..
+       --inside-work-tree    true or false
+       --inside-git-dir      true or false
+       --bare                true or false
+       --shallow             true or false
+       --verify              exactly one valid revision, or fail
+  --q, --quiet               with --verify: no message, just the status
+       --short               shorten the object names
+       --short-digits N      shorten the object names to this many digits
+       --abbrev-ref          a branch or tag by its short name
+       --symbolic            print the names as given
+       --symbolic-full-name  print the full ref names
+       --default REV         a revision to use when none is given
+       --all                 every ref
+       --branches            every branch
+       --tags                every tag
+       --remotes             every remote-tracking branch
+       --revs-only           only the revisions
+       --no-revs             only what is not a revision
+       --object-format       sha1 or sha256
+       --git-path PATH       the path of a file in the git directory
 ```
 
 ## -revert
@@ -868,6 +1120,29 @@ options:
        --color always|never|auto                              when to use colour (default: auto)
   --s, --header-only                                          leave out the changes
        --path PATH...                                         only changes to these paths (put it last)
+```
+
+## -show-ref
+
+```
+usage: 1git -show-ref [options] [<PATTERN>...]
+
+list refs with the objects they name
+
+arguments:
+  [<PATTERN>...]      only refs whose name ends with these
+
+options:
+       --help         show this help
+       --head         include HEAD
+       --branches     only branches
+       --tags         only tags
+       --verify       exact ref names only; fail when one is missing
+  --q, --quiet        print nothing, just the exit status
+  --d, --dereference  also print the commit an annotated tag points at
+  --s, --hash         print only the object names
+       --abbrev N     shorten the object names to this many digits
+       --exists       exit 0 when the ref exists, 2 when not
 ```
 
 ## -stash
@@ -1015,6 +1290,26 @@ options:
   --q, --quiet              print nothing
 ```
 
+## -symbolic-ref
+
+```
+usage: 1git -symbolic-ref [options] <NAME> [<REF>]
+
+read, set or delete a symbolic ref such as HEAD
+
+arguments:
+  <NAME>               the symbolic ref
+  [<REF>]              point it at this ref
+
+options:
+       --help          show this help
+  --q, --quiet         no message when it is not a symbolic ref; exit 1
+       --short         print refs/heads/main as main
+       --shallow       print the ref it names, not what that names in turn
+  --d, --delete        delete the symbolic ref
+  --m, --message TEXT  the reflog message
+```
+
 ## -tag
 
 ```
@@ -1043,6 +1338,25 @@ options:
        --format FORMAT    print each tag in this format
   --n, --lines N          with the list, show this many lines of each annotation
   --i, --ignore-case      sort and filter without regard to case
+```
+
+## -update-ref
+
+```
+usage: 1git -update-ref [options] <REF> [<VALUE>] [<OLD>]
+
+set, move or delete a ref, checking what it was
+
+arguments:
+  <REF>                the ref to change (HEAD means the branch it is on)
+  [<VALUE>]            the object it will name (with --delete: what it must be now)
+  [<OLD>]              only when it names this now (all zeros: only when it does not exist)
+
+options:
+       --help          show this help
+  --d, --delete        delete the ref
+       --no-follow     change a symbolic ref itself, not what it names
+  --m, --message TEXT  the reflog message
 ```
 
 ## -worktree
@@ -1106,4 +1420,16 @@ arguments:
 options:
        --help   show this help
   --f, --force  delete it even with changes in it
+```
+
+## -write-tree
+
+```
+usage: 1git -write-tree [options]
+
+write the index as a tree object
+
+options:
+       --help        show this help
+       --missing-ok  do not check that the objects exist
 ```

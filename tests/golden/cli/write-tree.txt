@@ -1,0 +1,7 @@
+usage: 1git -write-tree [options]
+
+write the index as a tree object
+
+options:
+       --help        show this help
+       --missing-ok  do not check that the objects exist

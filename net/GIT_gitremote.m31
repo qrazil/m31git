@@ -92,6 +92,10 @@ bool remove_section(str gitdir, str section, str sub) {
         return false;
     }
     str out = kept.join("\n");
+    if (body.ends_with("\n") && !out.ends_with("\n")) {
+        // the removed section was the last one: the file still ends with a newline
+        out = out + "\n";
+    }
     match (io.write(path, out)) {
         case Ok(_): {
         }

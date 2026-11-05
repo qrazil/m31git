@@ -1,0 +1,149 @@
+# name|group|git 2.49|1git 0.31|decision|prio|note (source of the git status / why)
+add	porcelain	kept	partial	IMPLEMENT	P1	-i and -e (interactive/edit) missing; -p, -A, -u, -N, --chmod, --renormalize done
+am	porcelain	kept	missing	IMPLEMENT	P1	needs mailsplit/mailinfo/apply
+archive	porcelain	kept	missing	IMPLEMENT	P2	tar first, zip second
+backfill	porcelain	kept	missing	LATER	P3	partial clone follow-up (new in 2.49)
+bisect	porcelain	kept	missing	IMPLEMENT	P1	start/good/bad/skip/reset/run/log/replay
+branch	porcelain	kept	partial	IMPLEMENT	P1	--edit-description, --track variants, --copy partly
+bundle	porcelain	kept	missing	IMPLEMENT	P2	create/verify/list-heads/unbundle (format-bundle v2/v3)
+checkout	porcelain	kept (BreakingChanges: "all three commands will stay")	partial	IMPLEMENT	P1	0.31: -checkout is a command again (-b -B --detach -f --ours --theirs --track -p -q and paths); -m, --orphan, --conflict refused
+cherry-pick	porcelain	kept	partial	IMPLEMENT	P1	
+citool	porcelain	kept	missing	OUT	-	Tk GUI
+clean	porcelain	kept	partial	IMPLEMENT	P2	-i and -e missing
+clone	porcelain	kept	partial	IMPLEMENT	P1	--recurse-submodules, --reference, --shared, --local hardlinks missing
+commit	porcelain	kept	partial	IMPLEMENT	P1	-S (gpg/ssh signing via external tools) missing; --fixup/--squash/-C/-c/--interactive checked per option in the harness
+describe	porcelain	kept	missing	IMPLEMENT	P1	
+diff	porcelain	kept	partial	IMPLEMENT	P1	--word-diff, --color-moved, --ext-diff, textconv, --submodule missing
+fetch	porcelain	kept	partial	IMPLEMENT	P1	--recurse-submodules, bundle-uri, protocol v0/v1 via file/git:// missing
+format-patch	porcelain	kept	missing	IMPLEMENT	P1	
+gc	porcelain	kept	missing	IMPLEMENT	P2	
+gitk	porcelain	kept	missing	OUT	-	Tk GUI; mgit is the interactive client
+grep	porcelain	kept	missing	IMPLEMENT	P1	
+gui	porcelain	kept	missing	OUT	-	Tk GUI; mgit is the interactive client
+init	porcelain	kept	partial	IMPLEMENT	P2	--object-format sha256 and --ref-format are read by the library; --template, --separate-git-dir, --shared checked
+log	porcelain	kept	partial	IMPLEMENT	P1	-L, --follow done, --show-signature, --pretty trailers and %(describe), --notes missing
+maintenance	porcelain	kept	missing	IMPLEMENT	P2	run/start/stop/register/unregister (no scheduler daemon)
+merge	porcelain	kept	partial	IMPLEMENT	P1	strategies ort and ours done; octopus, subtree, recursive options partial
+mv	porcelain	kept	done	IMPLEMENT	P3	
+notes	porcelain	kept	missing	IMPLEMENT	P2	
+pull	porcelain	kept	partial	IMPLEMENT	P1	
+push	porcelain	kept	partial	IMPLEMENT	P1	--recurse-submodules, --signed missing
+range-diff	porcelain	kept	missing	IMPLEMENT	P3	
+rebase	porcelain	kept	partial	IMPLEMENT	P1	merge backend with -i done; --rebase-merges, --update-refs check per option; apply backend only through --apply flags
+reset	porcelain	kept	partial	IMPLEMENT	P1	-p done through -restore
+restore	porcelain	kept	partial	IMPLEMENT	P1	
+revert	porcelain	kept	partial	IMPLEMENT	P1	
+rm	porcelain	kept	partial	IMPLEMENT	P2	
+scalar	porcelain	kept	missing	OUT	-	Microsoft's wrapper around config/maintenance/sparse-checkout; the pieces are separate commands
+shortlog	porcelain	kept	missing	IMPLEMENT	P1	
+show	porcelain	kept	partial	IMPLEMENT	P1	
+sparse-checkout	porcelain	kept (non-cone mode deprecated, see below)	missing	IMPLEMENT	P2	cone mode only: git-sparse-checkout.adoc "non-cone mode is deprecated"
+stash	porcelain	kept (stash save deprecated in favour of push)	partial	IMPLEMENT	P2	branch, create, store, export/import missing; save is not implemented
+status	porcelain	kept	partial	IMPLEMENT	P1	--ahead-behind, --find-renames, submodule summary check per option
+submodule	porcelain	kept	missing	IMPLEMENT	P1	add/init/update/status/foreach/sync/deinit/absorbgitdirs/summary
+switch	porcelain	kept	partial	IMPLEMENT	P1	
+tag	porcelain	kept	partial	IMPLEMENT	P1	-s/-u/-v (signing) missing; --contains/--sort/--format partly
+worktree	porcelain	kept	partial	IMPLEMENT	P2	move, lock, unlock, repair missing
+config	ancillary-manipulators	kept	partial	IMPLEMENT	P1	0.31: get/set/unset/list/--get-all/--get-regexp/--add/--replace-all/scopes/types/--default/--show-origin/--show-scope and the new list/get/set/unset verbs; --edit, --rename-section, --remove-section, --blob, --get-urlmatch missing
+fast-export	ancillary-manipulators	kept	missing	IMPLEMENT	P3	
+fast-import	ancillary-manipulators	kept	missing	IMPLEMENT	P3	
+filter-branch	ancillary-manipulators	discouraged	missing	DROP	-	git-filter-branch.adoc WARNING: "its use is not recommended. Please use an alternative history filtering tool such as git filter-repo"
+mergetool	ancillary-manipulators	kept	missing	LATER	P3	launches external tools; needs the merge machinery of -merge
+pack-refs	ancillary-manipulators	kept	missing	IMPLEMENT	P3	
+prune	ancillary-manipulators	kept	missing	IMPLEMENT	P2	
+reflog	ancillary-manipulators	kept	missing	IMPLEMENT	P1	show/list/expire/delete/exists; the library (GIT_reflog) exists
+refs	ancillary-manipulators	kept	partial	IMPLEMENT	P3	1git -refs is its own listing; git refs verify/list/migrate missing
+remote	ancillary-manipulators	kept	partial	IMPLEMENT	P2	update, set-branches, prune done; show -n
+repack	ancillary-manipulators	kept	missing	IMPLEMENT	P2	
+replace	ancillary-manipulators	kept	missing	IMPLEMENT	P3	replace refs are read by the object layer? no: LATER read support too
+annotate	ancillary-interrogators	kept (same as blame, other output)	missing	IMPLEMENT	P1	with blame
+blame	ancillary-interrogators	kept	missing	IMPLEMENT	P1	the library of mgit's blame view exists
+bugreport	ancillary-interrogators	kept	missing	OUT	-	collects a report about git itself
+count-objects	ancillary-interrogators	kept	missing	IMPLEMENT	P3	
+diagnose	ancillary-interrogators	kept	missing	OUT	-	zip of diagnostics for git bug reports
+difftool	ancillary-interrogators	kept	missing	LATER	P3	external diff tools
+fsck	ancillary-interrogators	kept	missing	IMPLEMENT	P2	
+gitweb	ancillary-interrogators	kept	missing	OUT	-	Perl CGI web front end
+help	ancillary-interrogators	kept	missing	DROP	-	replaced by --help of every command and docs/CLI-REFERENCE.md (man pages are git's)
+instaweb	ancillary-interrogators	kept	missing	OUT	-	starts a web server for gitweb
+merge-tree	ancillary-interrogators	kept (--trivial-merge mode deprecated)	missing	IMPLEMENT	P2	--write-tree mode only: git-merge-tree.adoc "deprecated --trivial-merge"
+rerere	ancillary-interrogators	kept	partial	IMPLEMENT	P3	rerere.enabled recording exists in the merge code; the command (status/diff/forget/clear/gc) is missing
+show-branch	ancillary-interrogators	kept	missing	IMPLEMENT	P3	
+verify-commit	ancillary-interrogators	kept	missing	IMPLEMENT	P3	runs gpg/ssh-keygen/gpgsm
+verify-tag	ancillary-interrogators	kept	missing	IMPLEMENT	P3	runs gpg/ssh-keygen/gpgsm
+version	ancillary-interrogators	kept	done	IMPLEMENT	P3	1git --version
+whatchanged	ancillary-interrogators	removal-3.0	missing	DROP	-	BreakingChanges.adoc: "The git-whatchanged(1) command has outlived its usefulness more than 10 years ago, and takes more keystrokes to type than its rough equivalent git log --raw ... The command will be removed." Use: 1git -log --raw (--no-merges)
+cvsexportcommit	foreign	kept	missing	OUT	-	CVS ecosystem
+cvsimport	foreign	kept	missing	OUT	-	CVS ecosystem
+cvsserver	foreign	kept	missing	OUT	-	CVS server emulator
+imap-send	foreign	kept	missing	OUT	-	mail transport (email send is out of scope)
+p4	foreign	kept	missing	OUT	-	Perforce ecosystem
+quiltimport	foreign	kept	missing	OUT	-	quilt ecosystem
+request-pull	foreign	kept	missing	LATER	P3	summary text for mail; needs the remote check
+send-email	foreign	kept	missing	OUT	-	SMTP/Perl; format-patch and am cover the file side
+svn	foreign	kept	missing	OUT	-	Subversion ecosystem
+apply	plumbing-manipulators	kept	missing	IMPLEMENT	P1	--check, --stat, --numstat, --index, --cached, -3, -R, -p<n>, --reject, --whitespace
+checkout-index	plumbing-manipulators	kept	missing	IMPLEMENT	P2	
+commit-graph	plumbing-manipulators	kept	missing	IMPLEMENT	P3	only an accelerator; reading it is optional
+commit-tree	plumbing-manipulators	kept	done	IMPLEMENT	P1	0.31 (no -S)
+hash-object	plumbing-manipulators	kept	done	IMPLEMENT	P1	0.31 (no filters: --path, --no-filters accepted only as the default)
+index-pack	plumbing-manipulators	kept	missing	IMPLEMENT	P2	the pack reader of the library exists
+merge-file	plumbing-manipulators	kept	missing	IMPLEMENT	P2	the three-way merge of -merge exists
+merge-index	plumbing-manipulators	kept	missing	IMPLEMENT	P3	
+mktag	plumbing-manipulators	kept	missing	IMPLEMENT	P3	
+mktree	plumbing-manipulators	kept	missing	IMPLEMENT	P2	
+multi-pack-index	plumbing-manipulators	kept	missing	IMPLEMENT	P3	accelerator
+pack-objects	plumbing-manipulators	kept	missing	IMPLEMENT	P2	the pack writer of push exists
+prune-packed	plumbing-manipulators	kept	missing	IMPLEMENT	P3	
+read-tree	plumbing-manipulators	kept	missing	IMPLEMENT	P2	
+replay	plumbing-manipulators	experimental	missing	LATER	P3	"EXPERIMENTAL" in git help -a
+symbolic-ref	plumbing-manipulators	kept	done	IMPLEMENT	P1	0.31
+unpack-objects	plumbing-manipulators	kept	missing	IMPLEMENT	P2	
+update-index	plumbing-manipulators	kept	missing	IMPLEMENT	P2	
+update-ref	plumbing-manipulators	kept	partial	IMPLEMENT	P1	0.31: set/delete/verify old; --stdin transactions and --create-reflog missing
+write-tree	plumbing-manipulators	kept	done	IMPLEMENT	P1	0.31 (--prefix missing)
+cat-file	plumbing-interrogators	kept	partial	IMPLEMENT	P1	0.31: -t -s -p -e, <type> <object>, --batch and --batch-check with formats; --textconv, --filters, --batch-command, --batch-all-objects, --follow-symlinks missing
+cherry	plumbing-interrogators	kept	missing	IMPLEMENT	P2	
+diff-files	plumbing-interrogators	kept	missing	IMPLEMENT	P2	
+diff-index	plumbing-interrogators	kept	missing	IMPLEMENT	P2	
+diff-tree	plumbing-interrogators	kept	missing	IMPLEMENT	P2	
+for-each-ref	plumbing-interrogators	kept	done	IMPLEMENT	P1	0.31: atoms refname objectname objecttype objectsize subject body contents author* committer* tagger* creator* tag symref upstream HEAD parent tree numparent, sort, count, contains/merged/points-at; %(if) %(align) --shell/--perl/--python/--tcl missing
+for-each-repo	plumbing-interrogators	kept	missing	IMPLEMENT	P3	
+get-tar-commit-id	plumbing-interrogators	kept	missing	LATER	P3	with archive
+ls-files	plumbing-interrogators	kept	partial	IMPLEMENT	P1	0.31: -c -d -m -o -i -s -u -z --full-name --error-unmatch --exclude-standard; -k -t -v --eol --directory -x -X --format --with-tree --recurse-submodules missing
+ls-remote	plumbing-interrogators	kept	partial	IMPLEMENT	P1	as -remote-refs; a local path as the remote fails (known gap)
+ls-tree	plumbing-interrogators	kept	partial	IMPLEMENT	P1	0.31: -r -t -d -l -z --name-only --object-only --abbrev --full-name --full-tree and paths; --format missing
+merge-base	plumbing-interrogators	kept	partial	IMPLEMENT	P1	0.31: two commits, --all, --is-ancestor; --octopus, --independent, --fork-point missing
+name-rev	plumbing-interrogators	kept (--stdin removal-3.0)	missing	IMPLEMENT	P2	BreakingChanges.adoc: "Git 3.0 removes the support for --stdin altogether": only --annotate-stdin is implemented
+pack-redundant	plumbing-interrogators	removal-3.0	missing	DROP	-	BreakingChanges.adoc: "this command will finally be removed" (dies unless --i-still-use-this since 4406522b76); use gc
+rev-list	plumbing-interrogators	kept	partial	IMPLEMENT	P1	0.31: --count -n --skip --reverse --parents --no-merges --merges --all --branches --tags --remotes, ranges, ^; --objects, --first-parent, --author..., --boundary, --left-right, pathspecs missing (log has most)
+rev-parse	plumbing-interrogators	kept	partial	IMPLEMENT	P1	0.31: revisions and ranges, --verify --short --abbrev-ref --symbolic(-full-name) --show-toplevel --git-dir --show-prefix --show-cdup --is-* --all/--branches/--tags --default; --parseopt, --sq-quote, --local-env-vars, @{upstream} forms checked per case
+show-index	plumbing-interrogators	kept	missing	IMPLEMENT	P3	
+show-ref	plumbing-interrogators	kept	done	IMPLEMENT	P1	0.31 (--heads kept as git keeps it)
+unpack-file	plumbing-interrogators	kept	missing	IMPLEMENT	P3	
+var	plumbing-interrogators	kept	missing	IMPLEMENT	P2	
+verify-pack	plumbing-interrogators	kept	missing	IMPLEMENT	P2	
+daemon	plumbing-sync	kept	missing	OUT	-	git:// server
+fetch-pack	plumbing-sync	kept	missing	IMPLEMENT	P3	
+http-backend	plumbing-sync	kept	missing	OUT	-	CGI server side
+send-pack	plumbing-sync	kept	missing	IMPLEMENT	P3	
+update-server-info	plumbing-sync	kept	missing	LATER	P3	dumb HTTP only; not on git's removal list
+check-attr	helpers	kept	missing	IMPLEMENT	P2	
+check-ignore	helpers	kept	missing	IMPLEMENT	P1	the ignore matcher of the library exists
+check-mailmap	helpers	kept	missing	IMPLEMENT	P3	
+check-ref-format	helpers	kept	done	IMPLEMENT	P2	0.31
+column	helpers	kept	missing	IMPLEMENT	P3	
+credential	helpers	kept	missing	IMPLEMENT	P2	the helper protocol (get/store/erase)
+credential-cache	helpers	kept	missing	LATER	P3	unix-socket daemon
+credential-store	helpers	kept	missing	IMPLEMENT	P2	
+fmt-merge-msg	helpers	kept	missing	IMPLEMENT	P3	
+hook	helpers	kept	missing	IMPLEMENT	P2	run
+interpret-trailers	helpers	kept	missing	IMPLEMENT	P2	
+mailinfo	helpers	kept	missing	IMPLEMENT	P2	with am
+mailsplit	helpers	kept	missing	IMPLEMENT	P2	with am
+merge-one-file	helpers	kept	missing	IMPLEMENT	P3	
+patch-id	helpers	kept	missing	IMPLEMENT	P3	
+sh-i18n	helpers	kept	missing	OUT	-	shell script helper for git's own scripts
+sh-setup	helpers	kept	missing	OUT	-	shell script helper for git's own scripts
+stripspace	helpers	kept	missing	IMPLEMENT	P2	the library function exists
+stage	alias	kept (synonym of add)	missing	IMPLEMENT	P3	git-stage.adoc: "git stage <arg>..." is git add; -migrate maps it to -add

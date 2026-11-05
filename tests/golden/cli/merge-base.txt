@@ -1,0 +1,12 @@
+usage: 1git -merge-base [options] <COMMIT> <COMMIT>
+
+the best common ancestor of two commits
+
+arguments:
+  <COMMIT>            a commit
+  <COMMIT>            another commit
+
+options:
+       --help         show this help
+  --a, --all          every best common ancestor, not just one
+       --is-ancestor  print nothing; exit 0 when the first is an ancestor of the second, 1 when not

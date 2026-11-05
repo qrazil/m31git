@@ -82,9 +82,11 @@ Several commands on a line (`git add -A && git commit -m x && git push`):
 1git -add --all -commit --message x -push
 ```
 
-The line stops at the first command that fails, with exit status 1.
+The line stops at the first command that fails, with that command's own exit
+status.
 
-Exit status: git's 128, 129 and 2 are all 1 here; 2 is reserved for a command
-line that was not understood. Not in 1git (see `GIT-COMPAT.md`): `checkout`,
-`config`, `blame`, `describe`, `grep`, `reflog`, `shortlog`, `ls-files`,
-`stash branch`, `add -i`, `commit -p`.
+Exit status: since 0.36.0 git's own numbers go out unchanged (128 fatal, 129
+usage error of the command, 1 plain failure); 2 is reserved for a command line
+that was not understood (nothing ran). What git has that 1git does not yet, and
+what is dropped for good (`whatchanged`, `pack-redundant`, `filter-branch`), is in
+`GIT-PARITY.md`.

@@ -1,0 +1,25 @@
+usage: 1git -config [options] [<NAME [VALUE]>...]
+
+read, write, list and remove configuration
+
+arguments:
+  [<NAME [VALUE]>...]                        a key to read, or a key and a value to write
+
+options:
+       --help                                show this help
+  --l, --list                                every key and value in effect
+       --get                                 read one key: the last value (the default with one operand)
+       --get-all                             read every value of a key
+       --regexp                              read every key that matches a pattern
+       --unset                               remove a key
+       --unset-all                           remove every value of a key
+       --add                                 add a value, keeping the others
+       --replace-all                         replace every value of a key
+       --scope local|global|system|worktree  which file to read or write (default: read all, write local)
+  --f, --file FILE                           read or write this file
+       --type bool|int|path|bool-or-int      show or store the value as this type
+       --names-only                          show names without values
+  --z, --nul                                 end each record with NUL
+       --default VALUE                       what a missing key reads as
+       --show-origin                         show the file each value comes from
+       --show-scope                          show the scope each value comes from

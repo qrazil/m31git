@@ -1,0 +1,11 @@
+# Cases where 1git differs from git today: recorded gaps, each to be fixed and removed (docs/GIT-PARITY.md)
+dirty | - | reset --keep HEAD~1
+basic | - | tag --sort=-creatordate
+dirty | - | stash push a.txt
+merge | git switch -q topic | cherry-pick main~1..main
+merge | git switch -q side | rebase --onto main HEAD~1
+merge | git switch -q side | rebase -i main
+basic | - | worktree list
+basic | git worktree add ../wt | worktree list
+basic | - | ls-remote . 
+basic | - | ls-remote --heads .

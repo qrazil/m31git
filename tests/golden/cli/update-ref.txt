@@ -1,0 +1,14 @@
+usage: 1git -update-ref [options] <REF> [<VALUE>] [<OLD>]
+
+set, move or delete a ref, checking what it was
+
+arguments:
+  <REF>                the ref to change (HEAD means the branch it is on)
+  [<VALUE>]            the object it will name (with --delete: what it must be now)
+  [<OLD>]              only when it names this now (all zeros: only when it does not exist)
+
+options:
+       --help          show this help
+  --d, --delete        delete the ref
+       --no-follow     change a symbolic ref itself, not what it names
+  --m, --message TEXT  the reflog message

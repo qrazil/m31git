@@ -1,0 +1,15 @@
+usage: 1git -symbolic-ref [options] <NAME> [<REF>]
+
+read, set or delete a symbolic ref such as HEAD
+
+arguments:
+  <NAME>               the symbolic ref
+  [<REF>]              point it at this ref
+
+options:
+       --help          show this help
+  --q, --quiet         no message when it is not a symbolic ref; exit 1
+       --short         print refs/heads/main as main
+       --shallow       print the ref it names, not what that names in turn
+  --d, --delete        delete the symbolic ref
+  --m, --message TEXT  the reflog message

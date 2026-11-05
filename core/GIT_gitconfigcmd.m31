@@ -1,0 +1,743 @@
+// `1git -config`: git's `config` in git's bytes and exit statuses: read a key
+// (`--get`, `--get-all`, `--get-regexp`), list everything (`--list`,
+// `--name-only`, `-z`, `--show-origin`, `--show-scope`), write one (`name
+// value`, `--add`, `--replace-all`, `--unset`, `--unset-all`), the scopes
+// (`--local`, `--global`, `--system`, `--file`), the value types (`--bool`,
+// `--int`, `--path`, `--type`) and `--default`. The sections of a file are
+// edited in place, comments and layout untouched (`GIT_config.edit_*`). The
+// newer verbs `config list|get|set|unset` are read as the options they stand
+// for. Left out (and refused with a message): `--edit`, `--rename-section`,
+// `--remove-section` and `--blob`.
+
+import io;
+import os;
+import fs;
+import text.regex;
+import core.GIT_config;
+import core.GIT_repository;
+import core.GIT_gitwrite;
+import core.GIT_gitcommon;
+
+str usage_text() {
+    return "usage: git config [<options>]";
+}
+
+/// The file a scope writes to.
+str scope_file(str gitdir, str scope) {
+    if (scope == "system") {
+        return "/etc/gitconfig";
+    }
+    if (scope == "global") {
+        match (os.env("GIT_CONFIG_GLOBAL")) {
+            case Some(str path): {
+                return path;
+            }
+            case None: {
+            }
+        }
+        str home = os.env("HOME").or("");
+        str own = fs.join(home, ".gitconfig");
+        str xdg = os.env("XDG_CONFIG_HOME").or("");
+        if (xdg == "") {
+            xdg = fs.join(home, ".config");
+        }
+        str other = fs.join(xdg, "git/config");
+        if (!fs.is_present(own) && fs.is_present(other)) {
+            return other;
+        }
+        return own;
+    }
+    return fs.join(GIT_repository.common(gitdir), "config");
+}
+
+int fatal_error(str message, int status) {
+    io.eprint(message);
+    return status;
+}
+
+/// The entries a read looks at: one scope, one file, or all of them.
+Result<GIT_config.Config, GIT_config.Error> entries_of(str gitdir, str scope, str file) {
+    if (file != "") {
+        return GIT_config.load_file(file, "file");
+    }
+    if (scope != "") {
+        return GIT_config.load_file(scope_file(gitdir, scope), scope);
+    }
+    if (gitdir != "") {
+        return GIT_config.load_all(gitdir);
+    }
+    List<GIT_config.Entry> all = [];
+    List<str> scopes = ["system", "global"];
+    for (str one in scopes) {
+        match (GIT_config.load_file(scope_file(gitdir, one), one)) {
+            case Ok(GIT_config.Config part): {
+                for (GIT_config.Entry entry in part.entries) {
+                    all.push(entry);
+                }
+            }
+            case Err(GIT_config.Error error): {
+                return Result<GIT_config.Config, GIT_config.Error>.Err(error);
+            }
+        }
+    }
+    return Result<GIT_config.Config, GIT_config.Error>.Ok(GIT_config.Config(all));
+}
+
+/// The command-line (`-c`) entries as config entries.
+List<GIT_config.Entry> command_entries(List<str> overrides) {
+    List<GIT_config.Entry> out = [];
+    // GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n come first
+    List<str> given_all = [];
+    int env_count = os.env("GIT_CONFIG_COUNT").or("0").parse_int().or(0);
+    for (int index in 0 .. env_count) {
+        str key = os.env("GIT_CONFIG_KEY_" + index.to_str()).or("");
+        if (key != "") {
+            given_all.push(key + "=" + os.env("GIT_CONFIG_VALUE_" + index.to_str()).or(""));
+        }
+    }
+    for (str one in overrides) {
+        given_all.push(one);
+    }
+    for (str given in given_all) {
+        if (given.starts_with("--")) {
+            continue;
+        }
+        str name = given;
+        str value = "";
+        bool has_value = false;
+        match (given.index_of("=")) {
+            case Some(int offset): {
+                name = given.substr(0, offset);
+                value = given.substr(offset + 1, given.size());
+                has_value = true;
+            }
+            case None: {
+            }
+        }
+        match (GIT_config.split_name(name)) {
+            case Ok(GIT_config.Name split): {
+                GIT_config.Entry entry = GIT_config.Entry(split.section.to_lower(), split.subsection, split.key.to_lower(), value, has_value, 0);
+                entry.origin = "command";
+                out.push(entry);
+            }
+            case Err(_): {
+            }
+        }
+    }
+    return out;
+}
+
+/// `true`/`false` as git reads a boolean; `None` for anything else.
+Option<bool> bool_of(str value, bool has_value) {
+    if (!has_value) {
+        return Option<bool>.Some(true);
+    }
+    str lower = value.to_lower();
+    if (lower == "true" || lower == "yes" || lower == "on" || lower == "1") {
+        return Option<bool>.Some(true);
+    }
+    if (lower == "false" || lower == "no" || lower == "off" || lower == "0" || lower == "") {
+        return Option<bool>.Some(false);
+    }
+    // any other whole number: non-zero is true
+    match (value.parse_int()) {
+        case Some(int number): {
+            return Option<bool>.Some(number != 0);
+        }
+        case None: {
+        }
+    }
+    return Option<bool>.None;
+}
+
+/// An integer with git's `k`, `m` and `g` suffixes.
+Option<int> int_of(str value) {
+    str lower = value.to_lower();
+    int factor = 1;
+    str digits = lower;
+    if (lower.ends_with("k")) {
+        factor = 1024;
+        digits = lower.substr(0, lower.size() - 1);
+    } else if (lower.ends_with("m")) {
+        factor = 1048576;
+        digits = lower.substr(0, lower.size() - 1);
+    } else if (lower.ends_with("g")) {
+        factor = 1073741824;
+        digits = lower.substr(0, lower.size() - 1);
+    }
+    match (digits.parse_int()) {
+        case Some(int number): {
+            return Option<int>.Some(number * factor);
+        }
+        case None: {
+            return Option<int>.None;
+        }
+    }
+}
+
+/// The value as the type asks (`""` type: untouched). `ok` false: a message
+/// was printed.
+type Typed {
+    bool is_ok;
+    str text;
+}
+
+Typed typed(str kind, str name, str value, bool has_value) {
+    if (kind == "bool") {
+        match (bool_of(value, has_value)) {
+            case Some(bool flag): {
+                if (flag) {
+                    return Typed(true, "true");
+                }
+                return Typed(true, "false");
+            }
+            case None: {
+                io.eprint("fatal: bad boolean config value '" + value + "' for '" + name + "'");
+                return Typed(false, "");
+            }
+        }
+    }
+    if (kind == "int") {
+        match (int_of(value)) {
+            case Some(int number): {
+                return Typed(true, number.to_str());
+            }
+            case None: {
+                io.eprint("fatal: bad numeric config value '" + value + "' for '" + name + "': invalid unit");
+                return Typed(false, "");
+            }
+        }
+    }
+    if (kind == "bool-or-int") {
+        match (int_of(value)) {
+            case Some(int number): {
+                return Typed(true, number.to_str());
+            }
+            case None: {
+                match (bool_of(value, has_value)) {
+                    case Some(bool flag): {
+                        if (flag) {
+                            return Typed(true, "true");
+                        }
+                        return Typed(true, "false");
+                    }
+                    case None: {
+                        io.eprint("fatal: bad boolean config value '" + value + "' for '" + name + "'");
+                        return Typed(false, "");
+                    }
+                }
+            }
+        }
+    }
+    if (kind == "path") {
+        if (value == "~" || value.starts_with("~/")) {
+            return Typed(true, os.env("HOME").or("") + value.substr(1, value.size()));
+        }
+        return Typed(true, value);
+    }
+    if (!has_value) {
+        return Typed(true, "");
+    }
+    return Typed(true, value);
+}
+
+/// The value type the options asked for.
+str kind_of(GIT_gitwrite.Opts opts) {
+    str kind = opts.value("type", "");
+    if (opts.flag("bool")) {
+        kind = "bool";
+    }
+    if (opts.flag("int")) {
+        kind = "int";
+    }
+    if (opts.flag("bool-or-int")) {
+        kind = "bool-or-int";
+    }
+    if (opts.flag("path")) {
+        kind = "path";
+    }
+    return kind;
+}
+
+str file_of_scope(str gitdir, str scope, str file) {
+    if (file != "") {
+        return file;
+    }
+    if (scope == "") {
+        return "";
+    }
+    return scope_file(gitdir, scope);
+}
+
+/// One line of a listing: the prefix (`file:...\t`, `local\t`), the name, the
+/// value.
+bytes line_of(GIT_config.Entry entry, str kind, GIT_gitwrite.Opts opts, str gitdir, str file, bool is_with_value, str joiner) {
+    str prefix = "";
+    bool is_nul = opts.flag("z");
+    str tab = "\t";
+    if (opts.flag("show-origin")) {
+        str where = file;
+        if (where == "") {
+            where = scope_file(gitdir, entry.origin);
+        }
+        if (entry.origin == "command") {
+            prefix = "command line:" + tab;
+        } else {
+            prefix = "file:" + where + tab;
+        }
+    }
+    if (opts.flag("show-scope")) {
+        prefix = prefix + entry.origin + tab;
+    }
+    str value = entry.value;
+    if (kind != "" && is_with_value) {
+        Typed typed_value = typed(kind, entry.name(), entry.value, entry.has_value);
+        value = typed_value.text;
+    }
+    if (!is_with_value) {
+        if (is_nul) {
+            return nul_ended(prefix + entry.name());
+        }
+        return (prefix + entry.name() + "\n").to_bytes();
+    }
+    if (is_nul) {
+        if (entry.has_value) {
+            return nul_ended(prefix + entry.name() + "\n" + value);
+        }
+        return nul_ended(prefix + entry.name());
+    }
+    if (entry.has_value || kind != "") {
+        return (prefix + entry.name() + joiner + value + "\n").to_bytes();
+    }
+    return (prefix + entry.name() + "\n").to_bytes();
+}
+
+bytes nul_ended(str text) {
+    bytes out = text.to_bytes();
+    out.push(0);
+    return out;
+}
+
+str read_target(str path) {
+    if (!fs.is_present(path)) {
+        return "";
+    }
+    match (io.read(path)) {
+        case Ok(str body): {
+            return body;
+        }
+        case Err(_): {
+            return "";
+        }
+    }
+}
+
+bool is_write_target(str path, str body) {
+    str temp = path + ".lock";
+    if (fs.is_present(temp)) {
+        io.eprint("error: could not lock config file " + path + ": File exists");
+        return false;
+    }
+    match (io.write(temp, body)) {
+        case Ok: {
+        }
+        case Err(_): {
+            io.eprint("error: could not lock config file " + path);
+            return false;
+        }
+    }
+    match (fs.rename(temp, path)) {
+        case Ok: {
+            return true;
+        }
+        case Err(_): {
+            io.eprint("error: could not write config file " + path);
+            return false;
+        }
+    }
+}
+
+int key_error(str key, GIT_config.Error error) {
+    match (error) {
+        case BadKey: {
+            if (!key.contains(".")) {
+                io.eprint("error: key does not contain a section: " + key);
+            } else {
+                io.eprint("error: invalid key: " + key);
+            }
+            return 1;
+        }
+        case Syntax: {
+            io.eprint("fatal: bad config line in the config file");
+            return 128;
+        }
+        case Io: {
+            io.eprint("fatal: unable to read the config file");
+            return 128;
+        }
+        case MultipleValues: {
+            io.eprint("warning: " + key + " has multiple values");
+            io.eprint("error: cannot overwrite multiple values with a single value");
+            io.eprint("       Use a regexp, --add or --replace-all to change " + key + ".");
+            return 5;
+        }
+        case NotFound: {
+            return 5;
+        }
+    }
+}
+
+pub int run_config(str start, List<str> overrides, List<str> given) {
+    List<str> argv = given;
+    // the verbs of git 2.46: `config list|get|set|unset`
+    if (argv.size() > 0) {
+        str verb = argv[0];
+        List<str> rest = argv.slice(1, argv.size());
+        if (verb == "list") {
+            argv = ["--list"];
+            for (str word in rest) {
+                argv.push(word);
+            }
+        } else if (verb == "get") {
+            argv = ["--get"];
+            for (str word in rest) {
+                if (word == "--all") {
+                    argv[0] = "--get-all";
+                } else if (word == "--regexp") {
+                    argv[0] = "--get-regexp";
+                } else {
+                    argv.push(word);
+                }
+            }
+        } else if (verb == "set") {
+            argv = [];
+            bool is_all = false;
+            for (str word in rest) {
+                if (word == "--all") {
+                    is_all = true;
+                } else {
+                    argv.push(word);
+                }
+            }
+            if (is_all) {
+                argv.insert(0, "--replace-all");
+            }
+        } else if (verb == "unset") {
+            argv = ["--unset"];
+            for (str word in rest) {
+                if (word == "--all") {
+                    argv[0] = "--unset-all";
+                } else {
+                    argv.push(word);
+                }
+            }
+        }
+    }
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["--get", "--get-all", "--get-regexp", "--get-urlmatch", "-l --list", "--unset", "--unset-all", "--add", "--replace-all", "--global", "--local", "--system", "--worktree", "-f --file=", "--blob=", "--bool", "--int", "--bool-or-int", "--path", "--type=", "--name-only", "-z --null", "--default=", "--show-origin", "--show-scope", "--includes", "--fixed-value", "-e --edit", "--rename-section", "--remove-section", "--comment=", "--no-type", "-t="]);
+    int bad = GIT_gitwrite.check_opts(opts, usage_text());
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.flag("edit") || opts.flag("rename-section") || opts.flag("remove-section") || opts.has("blob") || opts.has("get-urlmatch")) {
+        io.eprint("error: this form of config is not in 1git (see docs/GIT-PARITY.md)");
+        return 129;
+    }
+    str gitdir = GIT_repository.find(start);
+    str scope = "";
+    if (opts.flag("global")) {
+        scope = "global";
+    }
+    if (opts.flag("system")) {
+        scope = "system";
+    }
+    if (opts.flag("local")) {
+        scope = "local";
+    }
+    if (opts.flag("worktree")) {
+        scope = "local";
+    }
+    str file = opts.value("file", "");
+    if (scope == "local" && gitdir == "") {
+        return fatal_error("fatal: --local can only be used inside a git repository", 128);
+    }
+    str kind = kind_of(opts);
+    if (opts.has("t")) {
+        kind = opts.value("t", "");
+    }
+    List<str> words = opts.paths();
+    bool is_list = opts.flag("list");
+    bool is_get = opts.flag("get");
+    bool is_get_all = opts.flag("get-all");
+    bool is_regexp = opts.flag("get-regexp");
+    bool is_unset = opts.flag("unset");
+    bool is_unset_all = opts.flag("unset-all");
+    bool is_add = opts.flag("add");
+    bool is_replace_all = opts.flag("replace-all");
+    int actions = 0;
+    List<bool> chosen = [is_list, is_get, is_get_all, is_regexp, is_unset, is_unset_all, is_add, is_replace_all];
+    for (bool flag in chosen) {
+        if (flag) {
+            actions = actions + 1;
+        }
+    }
+    if (actions > 1) {
+        io.eprint("error: only one action at a time");
+        io.eprint(usage_text());
+        return 129;
+    }
+    bool is_write = is_add || is_replace_all || (actions == 0 && words.size() == 2);
+    if (actions == 0 && words.size() == 0) {
+        io.eprint(usage_text());
+        return 129;
+    }
+    if (actions == 0 && words.size() == 1) {
+        is_get = true;
+    }
+    if (actions == 0 && words.size() > 2) {
+        io.eprint("error: wrong number of arguments, should be from 1 to 2");
+        io.eprint(usage_text());
+        return 129;
+    }
+    if (is_list) {
+        if (words.size() > 0) {
+            io.eprint("error: wrong number of arguments, should be 0");
+            io.eprint(usage_text());
+            return 129;
+        }
+        match (entries_of(gitdir, scope, file)) {
+            case Ok(GIT_config.Config config): {
+                List<GIT_config.Entry> all = [];
+                for (GIT_config.Entry entry in config.entries) {
+                    all.push(entry);
+                }
+                if (scope == "" && file == "") {
+                    for (GIT_config.Entry entry in command_entries(overrides)) {
+                        all.push(entry);
+                    }
+                }
+                bytes out = [];
+                for (GIT_config.Entry entry in all) {
+                    out.extend(line_of(entry, "", opts, gitdir, file, !opts.flag("name-only"), "="));
+                }
+                GIT_gitwrite.put_bytes(out);
+                return 0;
+            }
+            case Err(GIT_config.Error error): {
+                return key_error("", error);
+            }
+        }
+    }
+    if (is_write) {
+        return write_key(gitdir, scope, file, words, is_add, is_replace_all, kind);
+    }
+    if (is_unset || is_unset_all) {
+        return unset_key(gitdir, scope, file, words, is_unset_all);
+    }
+    // the reads
+    if (words.size() < 1) {
+        io.eprint(usage_text());
+        return 129;
+    }
+    return read_key(gitdir, scope, file, overrides, opts, words, is_get_all, is_regexp, kind);
+}
+
+int write_key(str gitdir, str scope, str file, List<str> words, bool is_add, bool is_replace_all, str kind) {
+    if (words.size() != 2) {
+        io.eprint("error: wrong number of arguments, should be 2");
+        io.eprint(usage_text());
+        return 129;
+    }
+    str key = words[0];
+    match (GIT_config.split_name(key)) {
+        case Err(GIT_config.Error error): {
+            return key_error(key, error);
+        }
+        case Ok(GIT_config.Name name): {
+            Typed typed_value = typed(kind, key, words[1], true);
+            if (!typed_value.is_ok) {
+                return 128;
+            }
+            if (scope == "" && file == "") {
+                if (gitdir == "") {
+                    return fatal_error("fatal: not in a git directory", 128);
+                }
+                scope = "local";
+            }
+            str path = file_of_scope(gitdir, scope, file);
+            str body = read_target(path);
+            Result<str, GIT_config.Error> edited = Result<str, GIT_config.Error>.Err(GIT_config.Error.NotFound);
+            if (is_add) {
+                edited = GIT_config.edit_add(body, name.section, name.subsection, name.key, typed_value.text);
+            } else if (is_replace_all) {
+                str cleared = body;
+                match (GIT_config.edit_unset_all(body, name.section, name.subsection, name.key)) {
+                    case Ok(str without): {
+                        cleared = without;
+                    }
+                    case Err(_): {
+                    }
+                }
+                edited = GIT_config.edit_add(cleared, name.section, name.subsection, name.key, typed_value.text);
+            } else {
+                edited = GIT_config.edit_set(body, name.section, name.subsection, name.key, typed_value.text);
+            }
+            match (edited) {
+                case Ok(str next): {
+                    if (!is_write_target(path, next)) {
+                        return 4;
+                    }
+                    return 0;
+                }
+                case Err(GIT_config.Error error): {
+                    return key_error(key, error);
+                }
+            }
+        }
+    }
+}
+
+int unset_key(str gitdir, str scope, str file, List<str> words, bool is_all) {
+    if (words.size() != 1) {
+        io.eprint("error: wrong number of arguments, should be 1");
+        io.eprint(usage_text());
+        return 129;
+    }
+    str key = words[0];
+    match (GIT_config.split_name(key)) {
+        case Err(GIT_config.Error error): {
+            return key_error(key, error);
+        }
+        case Ok(GIT_config.Name name): {
+            if (scope == "" && file == "") {
+                if (gitdir == "") {
+                    return fatal_error("fatal: not in a git directory", 128);
+                }
+                scope = "local";
+            }
+            str path = file_of_scope(gitdir, scope, file);
+            str body = read_target(path);
+            Result<str, GIT_config.Error> edited = Result<str, GIT_config.Error>.Err(GIT_config.Error.NotFound);
+            if (is_all) {
+                edited = GIT_config.edit_unset_all(body, name.section, name.subsection, name.key);
+            } else {
+                edited = GIT_config.edit_unset(body, name.section, name.subsection, name.key);
+            }
+            match (edited) {
+                case Ok(str next): {
+                    if (!is_write_target(path, next)) {
+                        return 4;
+                    }
+                    return 0;
+                }
+                case Err(GIT_config.Error error): {
+                    return key_error(key, error);
+                }
+            }
+        }
+    }
+}
+
+int read_key(str gitdir, str scope, str file, List<str> overrides, GIT_gitwrite.Opts opts, List<str> words, bool is_all, bool is_regexp, str kind) {
+    List<GIT_config.Entry> all = [];
+    match (entries_of(gitdir, scope, file)) {
+        case Ok(GIT_config.Config config): {
+            for (GIT_config.Entry entry in config.entries) {
+                all.push(entry);
+            }
+        }
+        case Err(GIT_config.Error error): {
+            return key_error("", error);
+        }
+    }
+    if (scope == "" && file == "") {
+        for (GIT_config.Entry entry in command_entries(overrides)) {
+            all.push(entry);
+        }
+    }
+    List<GIT_config.Entry> hits = [];
+    if (is_regexp) {
+        match (regex.compile(words[0])) {
+            case Ok(regex.Regex compiled): {
+                for (GIT_config.Entry entry in all) {
+                    if (compiled.is_match(entry.name())) {
+                        hits.push(entry);
+                    }
+                }
+            }
+            case Err(_): {
+                io.eprint("error: invalid key pattern: " + words[0]);
+                return 6;
+            }
+        }
+    } else {
+        GIT_config.Name name = GIT_config.Name("", "", "");
+        match (GIT_config.split_name(words[0])) {
+            case Ok(GIT_config.Name split): {
+                name = split;
+            }
+            case Err(GIT_config.Error error): {
+                return key_error(words[0], error);
+            }
+        }
+        for (GIT_config.Entry entry in all) {
+            if (entry.section == name.section.to_lower() && entry.subsection == name.subsection && entry.key == name.key.to_lower()) {
+                hits.push(entry);
+            }
+        }
+    }
+    if (hits.size() == 0) {
+        if (opts.has("default")) {
+            Typed typed_value = typed(kind, words[0], opts.value("default", ""), true);
+            if (!typed_value.is_ok) {
+                return 128;
+            }
+            GIT_gitwrite.say(typed_value.text);
+            return 0;
+        }
+        return 1;
+    }
+    bytes out = [];
+    bool is_nul = opts.flag("z");
+    if (is_regexp) {
+        for (GIT_config.Entry entry in hits) {
+            out.extend(line_of(entry, kind, opts, gitdir, file, !opts.flag("name-only"), " "));
+        }
+        GIT_gitwrite.put_bytes(out);
+        return 0;
+    }
+    List<GIT_config.Entry> shown = [];
+    if (is_all) {
+        shown = hits;
+    } else {
+        shown.push(hits[hits.size() - 1]);
+    }
+    for (GIT_config.Entry entry in shown) {
+        Typed typed_value = typed(kind, entry.name(), entry.value, entry.has_value);
+        if (!typed_value.is_ok) {
+            return 128;
+        }
+        str prefix = "";
+        if (opts.flag("show-origin")) {
+            if (entry.origin == "command") {
+                prefix = "command line:\t";
+            } else {
+                str where = file;
+                if (where == "") {
+                    where = scope_file(gitdir, entry.origin);
+                }
+                prefix = "file:" + where + "\t";
+            }
+        }
+        if (opts.flag("show-scope")) {
+            prefix = prefix + entry.origin + "\t";
+        }
+        if (is_nul) {
+            out.extend((prefix + typed_value.text).to_bytes());
+            out.push(0);
+        } else {
+            out.extend((prefix + typed_value.text + "\n").to_bytes());
+        }
+    }
+    GIT_gitwrite.put_bytes(out);
+    return 0;
+}

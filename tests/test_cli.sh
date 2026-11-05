@@ -181,12 +181,12 @@ if build git && build t_cli; then
         bad "cli: a chained line" "$(cat "$cli_work/chain.out")" "$(git -C "$cli_work/chain" log --oneline | head -3)"
     fi
 
-    # a command that fails ends the line: exit 1, the next one does not run
+    # a command that fails ends the line with git's status (128), the next one does not run
     printf 'six\n' >>"$cli_work/chain/a.txt"
     (cd "$cli_work/chain" && cli_env "$cli_one" -switch no-such-branch -commit --all --message "must not happen" >/dev/null 2>&1)
     cli_rc=$?
-    if [ "$cli_rc" = 1 ] && [ "$(git -C "$cli_work/chain" log -1 --format=%s)" = chained ]; then
-        note "cli: a failing command stops the line with exit 1"
+    if [ "$cli_rc" = 128 ] && [ "$(git -C "$cli_work/chain" log -1 --format=%s)" = chained ]; then
+        note "cli: a failing command stops the line with git's exit 128"
     else
         bad "cli: failing command" "status $cli_rc, last commit: $(git -C "$cli_work/chain" log -1 --format=%s)"
     fi
@@ -336,7 +336,7 @@ if build git && build t_cli; then
     # --- exit status of a plain failure and of a plain success ------------------------------
     (cd "$cli_work/fx" && "$cli_one" -log nosuchrev >/dev/null 2>&1)
     cli_rc=$?
-    [ "$cli_rc" = 1 ] && note "cli: a failing command exits 1 (git says 128)" || bad "cli: exit 1" "status $cli_rc"
+    [ "$cli_rc" = 128 ] && note "cli: a failing command exits with git's 128" || bad "cli: exit 128" "status $cli_rc"
     (cd "$cli_work/fx" && "$cli_one" -diff --quiet HEAD~1 >/dev/null 2>&1)
     cli_rc=$?
     [ "$cli_rc" = 1 ] && note "cli: -diff --quiet exits 1 on differences" || bad "cli: diff --quiet" "status $cli_rc"

@@ -24,8 +24,7 @@ table in `MIGRATING-FROM-GIT.md`. The oracle scripts do exactly that
 (`scripts/lib_cli.sh`): they pass git's argv to `1git -migrate --nul`, run
 1git with the new line, and compare the output with git's.
 
-Exit status is 0, 1 (the command failed) or 2 (the line was not understood);
-git's 128 and 129 are 1. Forms of git's that were dropped on purpose are listed
+Exit status is 0, git's own status when the command failed (128, 129, 1, ...; since 0.36.0), or 2 (the line was not understood). Forms of git's that were dropped on purpose are listed
 in `CLI.md` ("What is not in 1git"); the oracle scripts still run them, through the program's internal
 git-grammar path (`M31GIT_INTERNAL_ARGV=1`, which `pull` re-runs itself by), so the
 command functions keep their checks although the command line no longer takes them.
@@ -35,7 +34,10 @@ usable day to day, so that `1git` can stand where `git` stands. It was a
 read-only plumbing client in `lib/args`' grammar, then git's own grammar for the
 porcelain; 0.24.0 settled on one grammar, the clean one, with git's results.
 
-## Scope: the essence, not the museum (owner's call, 2026-10-14)
+## Scope: the essence, not the museum (owner's call, 2026-10-14) -- SUPERSEDED
+
+**Superseded on 2026-11-05: the goal is a complete git replacement; see `GIT-PARITY.md`.** What follows is the earlier scope,
+kept for the record; its "Out, on purpose" list is replaced by the matrix there.
 
 `1git` replaces `git` for the work done against GitHub, GitLab and Gerrit,
 the way helix and vim keep the core of vi and drop its history. A feature is
@@ -613,7 +615,7 @@ Deliberate departures, and gaps:
   ~40 s at `-O0`, a 21 MB repository 7 s at `-O2`). This is an m31 library
   limit, not worked around.
 - `init` writes no templates (no sample hooks, `info/exclude`, `description`).
-- The advertised user agent is `1git/0.30.0`.
+- The advertised user agent is `1git/0.36.0`.
 
 ## Case-insensitive and Unicode-normalizing volumes (0.19.0, 0.19.1)
 

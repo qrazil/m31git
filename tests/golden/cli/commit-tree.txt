@@ -1,0 +1,12 @@
+usage: 1git -commit-tree [options] <TREE>
+
+write a commit object for a tree
+
+arguments:
+  <TREE>                   the tree
+
+options:
+       --help              show this help
+  --p, --parent COMMIT...  a parent commit
+  --m, --message TEXT...   the message: each text is a paragraph (default: standard input)
+  --F, --file FILE...      read the message from a file ('-' is standard input)

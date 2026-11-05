@@ -17,6 +17,7 @@ import core.GIT_config;
 import core.GIT_repository;
 import core.GIT_gitstatus;
 import core.GIT_icase;
+import core.GIT_hash;
 import diff.GIT_sbs_text;
 
 // --- output ------------------------------------------------------------------------
@@ -133,6 +134,13 @@ pub Opened open(str start, List<str> overrides) {
     }
     if (gitdir == "") {
         io.eprint("fatal: not a git repository (or any of the parent directories): .git");
+        return Opened(false, Ctx("", "", "", overrides, GIT_config.effective("")));
+    }
+    // a repository this program cannot read right (reftable, an unknown
+    // extension): git's kind of refusal, not a wrong answer
+    str refused = GIT_hash.refusal(gitdir);
+    if (refused != "") {
+        io.eprint("fatal: " + refused);
         return Opened(false, Ctx("", "", "", overrides, GIT_config.effective("")));
     }
     str prefix = "";

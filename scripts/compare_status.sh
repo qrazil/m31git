@@ -274,8 +274,8 @@ compare config-short "$r" --long
 n=$((n + 1))
 mkdir -p "$WORK/nowhere"
 ( cd "$WORK/nowhere" && GIT_CEILING_DIRECTORIES=$WORK one_run "$OURS" status ) >/dev/null 2>&1; got_rc=$?
-if [ $got_rc -ne 1 ]; then
-    printf '\033[31mdiffer\033[0m outside a repository: exit %s, git says 128 (1git: 1)\n' "$got_rc"
+if [ $got_rc -ne 128 ]; then
+    printf '\033[31mdiffer\033[0m outside a repository: exit %s, git says 128\n' "$got_rc"
     bad=$((bad + 1))
 fi
 

@@ -16,8 +16,9 @@
 #
 #   norm_rc <status>
 #
-# prints 0 for 0 and 1 for anything else: 1git's exit status is 0 or 1 (2 for a
-# command line it refuses), where git's is 0, 1, 2, 128, 129 ...
+# prints 0 for 0 and 1 for anything else (older scripts compare only success
+# and failure; since 0.36.0 1git's status is git's own, tests/conformance/run.sh
+# compares it exactly).
 #
 # Works with bash 3.2 (macOS): no mapfile, no `${arr[@]}` on an empty array
 # under `set -u`.

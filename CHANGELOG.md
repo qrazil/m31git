@@ -3,6 +3,46 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.36.0
+
+The owner's goal for 1git is now **a complete git replacement** (only deprecated or unused features may go). This release
+starts it: the research, a conformance harness that measures it, git's exit statuses, and the first batch of missing commands.
+Not a complete replacement yet: `docs/GIT-PARITY.md` lists every git command with its state and decision (148 commands:
+9 done, 37 partial, 102 missing at this commit).
+
+- **`docs/GIT-PARITY.md`**: every command of git 2.49 (`git help -a`, the plumbing, the helpers) with what git itself says
+  about it (`BreakingChanges.adoc`, the DEPRECATED notes of the manual pages), what 1git does today, and the decision:
+  implement (P1 a developer's week, P2 housekeeping and plumbing, P3 the rest), later, drop, or out of scope. Config keys,
+  hooks, attributes, submodules, sparse checkout, partial clone, bundles, protocols, credential helpers, merge strategies,
+  signing, SHA-256 and reftable are in the second table. It supersedes the scope list of `GIT-COMPAT.md`.
+- **Exit statuses are git's** (the decision): a failed command ends the line with the status git gives (128 fatal, 129 usage
+  error of the command, 1 plain failure, 5 and 6 for `-config`, 2 for `-show-ref --exists`); 2 stays "the line was not
+  understood, nothing ran". Before, every failure was 1. Scripts that tested `$? = 1` must test non-zero or git's number.
+- **`tests/conformance/`**: `run.sh <1git>` runs `cases.txt` (585 cases over 75 commands) through git and 1git in two
+  identical scratch repositories and compares stdout, exit status and the repository afterwards (refs, index, status,
+  reflog, config, state files, work tree). The 1git line comes from `1git -migrate`, so a git form with no spelling is
+  MISSING instead of skipped. At this commit: 469 pass, 0 unexpected failures, 10 known gaps (`known-failures.txt`), 106
+  missing (the commands below that do not exist yet). `commands.tsv` is the list of commands; `gen.py` makes the matrix and
+  `core/GIT_gitrefuse.m31` from it. `tests/test_conformance.sh` runs it in `tests/test.sh`.
+- **New commands** (git's options, Oro's names): `-config` (read, list, write, unset, scopes, types, `--default`,
+  `--show-origin`, the 2.46 verbs `list|get|set|unset`), `-checkout` (back as a command; `-migrate` still prefers
+  `-switch`/`-restore` when they say the same), `-merge-base`, `-rev-list`, `-symbolic-ref`, `-update-ref`, `-show-ref`,
+  `-for-each-ref` (most atoms, sort, count, contains/merged/points-at), `-hash-object`, `-write-tree`, `-commit-tree`,
+  `-ls-files`, `-check-ref-format`. `-cat-file` now takes `<type> <object>`, `-e` and `--batch`/`--batch-check`; `-ls-tree`
+  takes `-r -t -d -l -z --name-only --abbrev` and paths; `-rev-parse` takes the usual options (`--verify`, `--short`,
+  `--abbrev-ref`, `--show-toplevel`, `--git-dir`, `--symbolic-full-name`, `--all`, ...). An option a command does not take
+  yet is refused with status 129 and a message naming `docs/GIT-PARITY.md`.
+- **Commands git deprecates or discourages are dropped**: `-whatchanged` (removal in git 3.0), `-pack-redundant` (removal in
+  3.0), `-filter-branch` (the man page says not to use it), `-help` (`--help`): `fatal: <reason>; <what to use>`, status 128.
+  Commands out of scope (svn, cvs, p4, send-email, gitk, gui, gitweb, instaweb, daemon, ...) and commands still to come say
+  so the same way. All come from `commands.tsv`.
+- **A repository 1git cannot read right is refused**: `extensions.refStorage=reftable` or an unknown extension made
+  `-status` print "On branch .invalid"; every command now stops with git's message and 128.
+- Fixes found by the harness: `-remote-remove` of the last section left the config without its final newline; `-move a dir/`
+  with no `dir` made a file named `dir` (git: "destination directory does not exist").
+- `-migrate` writes an option value that starts with a dash as `--sort=-refname` and puts it after the operands.
+- The advertised user agent is `1git/0.31.0`.
+
 ## 0.35.0
 
 - **`y` copies** the commit's hash, short hash, subject or author, the file's path or the branch's name to the

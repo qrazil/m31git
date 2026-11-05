@@ -1,0 +1,19 @@
+usage: 1git -rev-list [options] [<REV>...]
+
+list the commits reachable from revisions, newest first
+
+arguments:
+  [<REV>...]                  where to start: branches, tags, commits, ranges (a..b), ^excluded
+
+options:
+       --help                 show this help
+  --n, --max N                stop after this many commits
+       --skip N               skip this many commits first
+       --count                print how many commits there are
+       --reverse              oldest first
+       --parents              print the parents after each commit
+       --merges only|exclude  only merge commits, or leave them out
+       --all                  start from every ref and HEAD
+       --branches             start from every branch
+       --tags                 start from every tag
+       --remotes              start from every remote-tracking branch

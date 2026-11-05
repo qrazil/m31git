@@ -1,9 +1,35 @@
-usage: 1git -rev-parse <REV>
+usage: 1git -rev-parse [options] [<REV>...]
 
-the object names a revision resolves to
+the object names a revision resolves to, and facts about the repository
 
 arguments:
-  <REV>        a revision: a ref, an object name, HEAD~2, main^{tree}, v1:path, A..B, ...
+  [<REV>...]                 revisions: a ref, an object name, HEAD~2, main^{tree}, v1:path, A..B, ...
 
 options:
-       --help  show this help
+       --help                show this help
+       --git-dir             the git directory
+       --absolute-git-dir    the git directory, absolute
+       --git-common-dir      the directory shared by the linked work trees
+       --toplevel            the top of the work tree
+       --prefix              where this directory is below the top, with a slash
+       --cdup                the way up to the top: ../..
+       --inside-work-tree    true or false
+       --inside-git-dir      true or false
+       --bare                true or false
+       --shallow             true or false
+       --verify              exactly one valid revision, or fail
+  --q, --quiet               with --verify: no message, just the status
+       --short               shorten the object names
+       --short-digits N      shorten the object names to this many digits
+       --abbrev-ref          a branch or tag by its short name
+       --symbolic            print the names as given
+       --symbolic-full-name  print the full ref names
+       --default REV         a revision to use when none is given
+       --all                 every ref
+       --branches            every branch
+       --tags                every tag
+       --remotes             every remote-tracking branch
+       --revs-only           only the revisions
+       --no-revs             only what is not a revision
+       --object-format       sha1 or sha256
+       --git-path PATH       the path of a file in the git directory

@@ -1,0 +1,18 @@
+usage: 1git -show-ref [options] [<PATTERN>...]
+
+list refs with the objects they name
+
+arguments:
+  [<PATTERN>...]      only refs whose name ends with these
+
+options:
+       --help         show this help
+       --head         include HEAD
+       --branches     only branches
+       --tags         only tags
+       --verify       exact ref names only; fail when one is missing
+  --q, --quiet        print nothing, just the exit status
+  --d, --dereference  also print the commit an annotated tag points at
+  --s, --hash         print only the object names
+       --abbrev N     shorten the object names to this many digits
+       --exists       exit 0 when the ref exists, 2 when not

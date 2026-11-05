@@ -1,9 +1,20 @@
-usage: 1git -ls-tree <TREE>
+usage: 1git -ls-tree [options] <TREE>
 
 list a tree's entries
 
 arguments:
-  <TREE>       a tree, or anything that names one: a commit, a tag, HEAD~2, v1:dir
+  <TREE>               a tree, or anything that names one: a commit, a tag, HEAD~2, v1:dir
 
 options:
-       --help  show this help
+       --help          show this help
+       --path PATH...  only these paths (put it last)
+  --r, --recursive     go into subtrees
+  --t, --trees         with --recursive: show the trees too
+  --d, --only-trees    show only the trees, not what is in them
+  --l, --long          show the size of each file
+  --z, --nul           end each name with NUL, unquoted
+       --names-only    show only the names
+       --objects-only  show only the object names
+       --abbrev N      shorten the object names to this many digits
+       --full-name     names from the top of the tree (the default from the top)
+       --full-tree     list the whole tree, not what is below the current directory

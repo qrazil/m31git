@@ -1,12 +1,18 @@
-usage: 1git -cat-file [options] <OBJECT>
+usage: 1git -cat-file [options] [<TYPE or OBJECT>] [<OBJECT>]
 
 print an object's type, size or contents
 
 arguments:
-  <OBJECT>       a revision that names an object: an object name or a prefix of one, a ref, HEAD:path, ...
+  [<TYPE or OBJECT>]          with two operands the type to print the object as (blob, tree, commit, tag), else the object
+  [<OBJECT>]                  an object name, a prefix of one, a ref, HEAD:path, ...
 
 options:
-       --help    show this help
-       --type    print the object's type word
-       --size    print the size of the object's content
-       --pretty  print the object itself (the default)
+       --help                 show this help
+  --t, --type                 print the object's type word
+  --s, --size                 print the size of the object's content
+  --p, --pretty               print the object in a readable form
+  --e, --exists               print nothing; exit 0 when the object exists
+       --batch                for each name read from standard input print its header and contents
+       --batch-check          for each name read from standard input print its header
+       --batch-format FORMAT  like --batch, with a format: %(objectname) %(objecttype) %(objectsize) %(rest)
+       --check-format FORMAT  like --batch-check, with a format

@@ -1,0 +1,13 @@
+usage: 1git -check-ref-format [options] <NAME>
+
+check that a ref name is well formed
+
+arguments:
+  <NAME>                  the name
+
+options:
+       --help             show this help
+       --allow-onelevel   accept a name without a slash
+       --refspec-pattern  accept one * in the name
+       --normalize        print the name with extra slashes removed
+       --branch           check a branch name and print it

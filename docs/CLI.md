@@ -64,7 +64,10 @@ exit 1 when there are differences, so `-diff --quiet -commit ...` stops there.
 1git -switch --create fix --from main -commit --all --message "x"
 ```
 
-A command that fails ends the line with exit status 1. `-status` or `-log`
+A command that fails ends the line with git's own exit status for it (128 for a
+fatal error, 129 for a usage error of the command, 1 for a plain failure such as
+`-diff --exit-code`), so a script written against git reads the same numbers; 2 is
+reserved for a line 1git did not understand. `-status` or `-log`
 chained at the end shows where you ended up.
 
 ## Principles
@@ -149,15 +152,14 @@ paths (`-add`, `-restore`, `-status`) take them directly.
 
 ### What is not in 1git
 
-Dropped on purpose (the scope in `GIT-COMPAT.md` says why): `checkout` (use
-`-switch` and `-restore`), `reset <paths>` (`-restore --staged`), `reset -p`,
-`stash branch|create|store|save`, `branch -l`, `commit -p/-i/--interactive`,
-`add -i/-e/-N`, `merge` of several heads, `--no-prefix` and `--src-prefix`,
-`--pretty` as a second name for `--format`, `-U<n>` and `-<n>` as second
-spellings of `--context` and `--max`, clustered switches (`-am`), `--abbrev-commit`,
-`--ahead-behind`, signing options, `--porcelain` as a flag (it is `--format
-porcelain`), `ls-files`, `config`, `blame`, `describe`, `grep`, `reflog`,
-`shortlog` (not implemented yet; they are on the list in `GIT-COMPAT.md`).
+Since 0.36.0 the goal is a complete git replacement, so this list is the exception
+(`GIT-PARITY.md` has every command and its state). Still not accepted: `reset <paths>`
+(`-restore --staged`), `reset -p`, `stash save` (git deprecates it), `branch -l`,
+`commit -p/-i/--interactive`, `add -i/-e`, `merge` of several heads (octopus, planned),
+`--no-prefix` and `--src-prefix`, `-U<n>` and `-<n>` as second spellings of `--context`
+and `--max`, clustered switches (`-am`), signing options, `--porcelain` as a flag (it is
+`--format porcelain`). `checkout` is back as `-checkout`; `-config`, `-ls-files` and the
+plumbing of 0.36.0 exist; `blame`, `describe`, `grep`, `reflog`, `shortlog` are next.
 
 ## Forge workflows
 

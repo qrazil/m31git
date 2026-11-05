@@ -74,6 +74,7 @@ bash scripts/build.sh git.m31         # the command line client -> ./1git
 ./1git -clean --force --directories --ignored also --dry-run   # also -worktree-add/-worktree/-worktree-remove/-worktree-prune
 ./1git -clone https://host/repo.git --depth 1   # also -fetch/-pull/-push/-remote-*/-remote-refs over HTTPS and ssh, git's output
 ./1git -push --to origin --track              # --for main --topic x for Gerrit; --force is with a lease
+./1git -config user.name 'Ann'        # -config -rev-list -show-ref -for-each-ref -ls-files -update-ref ... (docs/GIT-PARITY.md: every git command, its state, the decision)
 ./1git -log --help                            # every command documents itself; docs/CLI.md, docs/MIGRATING-FROM-GIT.md
 ./1git -migrate 'git log --oneline -n 5'     # prints: 1git -log --oneline --max 5
 
@@ -144,6 +145,7 @@ bash scripts/build.sh                 # mgit.m31 -> ./mgit   (-o name to rename)
 | `tests/pty_quick.py`, `pty_log.py`, `pty_local.py`, `pty_remotes.py`, `pty_tools.py`, `pty_misc.py` | the 0.31.0 to 0.35.0 features driven under a pty, each compared with real git on a twin repository (the network ones against `git http-backend`) |
 | `tests/pty_e2e.py`, `tests/pty_blame_undo.py` | drive `mgit` under a real pty against disposable fixtures, real `git` as the oracle (the second file: blame, history, undo, tags, ahead/behind, `push -u`, auto-refresh) |
 | `scripts/compare.sh` | every command beside the real `git`, compared octet for octet |
+| `tests/conformance/run.sh` | the conformance harness: `tests/conformance/cases.txt` (585 cases) through real git and `1git` (git's argv translated by `1git -migrate`) in two identical scratch repositories; stdout, exit status and the repository afterwards compared; `known-failures.txt` lists the recorded gaps; `commands.tsv` is the list of git's commands (state and decision) behind `docs/GIT-PARITY.md` |
 | `scripts/compare_status.sh` | `1git status` beside the real `git status` on disposable fixtures: ~20 forms each, bytes and exit status |
 | `scripts/compare_merge.sh` | the same method for `stash`, `cherry-pick`, `revert`, `merge` (renames, conflict styles, criss-cross), `rebase` (`-i`, autosquash), `clean` and `worktree`, over the case files `scripts/compare_merge_*.sh`; also compares every state file (`MERGE_*`, `sequencer/`, `rebase-merge/`, `worktrees/`) |
 | `scripts/compare_write.sh` | the change commands beside the real git: two identical repositories per case (fixed identities and dates), then output, exit status, index, refs, reflogs, work tree and `fsck` compared; object ids identical; a reconstruction of Gerrit's `commit-msg` hook (`scripts/gerrit-commit-msg.sh`) is the oracle for `Change-Id`; group `icase` runs `core.ignorecase` cases and the `init` volume probe |

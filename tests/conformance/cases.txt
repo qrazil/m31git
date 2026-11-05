@@ -1,0 +1,604 @@
+# fixture | setup | git arguments [ @@ stdin ]
+basic | - | status
+basic | - | status --short --branch
+dirty | - | status --short --branch
+dirty | - | status --porcelain=v2 --branch
+dirty | - | status -uall --ignored
+basic | - | log --oneline
+basic | - | log --oneline --graph --all
+merge | - | log --graph --oneline
+basic | - | log -n 2 --format=%H%n%s
+basic | - | show HEAD
+basic | - | show v1 --stat
+basic | - | diff HEAD~1 HEAD
+dirty | - | diff
+dirty | - | diff --staged
+dirty | - | diff --stat --name-status HEAD
+basic | - | config user.name
+basic | - | config --get user.email
+basic | - | config --get nope.nothing
+basic | - | config --list
+basic | - | config -l --name-only
+basic | - | config --list --show-scope
+basic | - | config core.bare
+basic | - | config --bool core.bare
+basic | - | config --get-all remote.origin.fetch
+basic | - | config --get-regexp ^user
+basic | - | config --default fallback nope.key
+basic | - | config --local user.name
+basic | - | config --global user.name
+basic | - | config --system user.name
+basic | - | config a.b c
+basic | - | config demo.key value
+basic | - | config --global demo.key value
+basic | - | config demo.sub.key "two words"
+basic | git config demo.k v1; git config --add demo.k v2 | config --get-all demo.k
+basic | git config demo.k v1; git config --add demo.k v2 | config demo.k v3
+basic | git config demo.k v1; git config --add demo.k v2 | config --replace-all demo.k v3
+basic | git config demo.k v1 | config --unset demo.k
+basic | - | config --unset demo.k
+basic | git config demo.k v1; git config --add demo.k v2 | config --unset-all demo.k
+basic | - | config --int core.repositoryformatversion
+basic | - | config --type=bool core.bare
+basic | - | config noperiod
+basic | - | config
+basic | - | config list
+basic | - | config get user.name
+basic | - | config set demo.key value
+basic | - | config unset user.name
+basic | - | config --add demo.key one
+basic | - | config --bool demo.flag yes
+basic | - | config --int demo.size 2k
+# --- merge-base
+merge | - | merge-base main side
+merge | - | merge-base --all main side
+merge | - | merge-base HEAD~1 HEAD
+merge | - | merge-base --is-ancestor side main
+merge | - | merge-base --is-ancestor main side
+basic | - | merge-base topic main
+basic | - | merge-base v1 nonesuch
+# --- rev-list
+basic | - | rev-list HEAD
+basic | - | rev-list --count HEAD
+basic | - | rev-list --max-count=2 HEAD
+basic | - | rev-list -n 1 HEAD
+basic | - | rev-list --reverse HEAD
+basic | - | rev-list --parents HEAD
+basic | - | rev-list v1..main
+basic | - | rev-list main ^topic
+basic | - | rev-list topic...main
+basic | - | rev-list --all
+basic | - | rev-list --branches --count
+basic | - | rev-list --skip=1 HEAD
+merge | - | rev-list --no-merges HEAD
+merge | - | rev-list --merges HEAD
+merge | - | rev-list HEAD
+basic | - | rev-list nonesuch
+basic | - | rev-list
+# --- symbolic-ref
+basic | - | symbolic-ref HEAD
+basic | - | symbolic-ref --short HEAD
+basic | - | symbolic-ref -q HEAD
+basic | git checkout -q --detach | symbolic-ref HEAD
+basic | git checkout -q --detach | symbolic-ref -q HEAD
+basic | - | symbolic-ref HEAD refs/heads/topic
+basic | - | symbolic-ref refs/heads/alias refs/heads/topic
+basic | - | symbolic-ref HEAD refs/heads/unborn
+basic | - | symbolic-ref HEAD notrefs
+basic | - | symbolic-ref refs/heads/main
+# --- update-ref
+basic | - | update-ref refs/heads/new HEAD
+basic | - | update-ref refs/heads/new HEAD~1
+basic | - | update-ref refs/heads/topic HEAD
+basic | - | update-ref refs/heads/topic HEAD HEAD~1
+basic | - | update-ref refs/heads/topic HEAD HEAD
+basic | - | update-ref -m "moved" refs/heads/topic HEAD
+basic | - | update-ref HEAD HEAD~1
+basic | - | update-ref -d refs/heads/topic
+basic | - | update-ref -d refs/tags/v1 v1
+basic | - | update-ref -d refs/heads/nonesuch
+basic | - | update-ref refs/heads/x nonesuch
+# --- show-ref
+basic | - | show-ref
+basic | - | show-ref --head
+basic | - | show-ref --tags
+basic | - | show-ref --heads
+basic | - | show-ref --branches
+basic | - | show-ref -d
+basic | - | show-ref -d --tags
+basic | - | show-ref v1
+basic | - | show-ref topic
+basic | - | show-ref nonesuch
+basic | - | show-ref --verify refs/heads/main
+basic | - | show-ref --verify main
+basic | - | show-ref --verify -q refs/heads/main
+basic | - | show-ref -s main
+basic | - | show-ref -s --abbrev=8 main
+basic | - | show-ref --exists refs/heads/main
+basic | - | show-ref --exists refs/heads/nope
+# --- for-each-ref
+basic | - | for-each-ref
+basic | - | for-each-ref refs/heads
+basic | - | for-each-ref refs/tags
+basic | - | for-each-ref '--format=%(refname)'
+basic | - | for-each-ref '--format=%(refname:short)'
+basic | - | for-each-ref --format='%(objectname:short) %(subject)' refs/heads
+basic | - | for-each-ref --format='%(refname:lstrip=2) %(objecttype)'
+basic | - | for-each-ref --format='%(authorname) %(authoremail) %(committername)' refs/heads/main
+basic | - | for-each-ref --format='%(authordate)' refs/heads/main
+basic | - | for-each-ref --format='%(authordate:iso)' refs/heads/main
+basic | - | for-each-ref --format='%(committerdate:short) %(creatordate:unix)' refs/heads
+basic | - | for-each-ref --format='%(taggername) %(tag) %(*objectname) %(contents:subject)' refs/tags
+basic | - | for-each-ref --format='%(HEAD) %(refname:short)' refs/heads
+basic | - | for-each-ref --sort=-refname
+basic | - | for-each-ref --sort=-committerdate refs/heads
+basic | - | for-each-ref --sort=objectname
+basic | - | for-each-ref --count=2
+basic | - | for-each-ref --contains v1 refs/heads
+basic | - | for-each-ref --no-contains v2 refs/heads
+basic | - | for-each-ref --merged=topic
+basic | - | for-each-ref --no-merged=topic refs/heads
+basic | - | for-each-ref --points-at=v1
+basic | - | for-each-ref 'refs/heads/t*'
+basic | - | for-each-ref '--format=%(nonesuch)'
+basic | - | for-each-ref --format='%(refname)%0a'
+# --- hash-object
+basic | - | hash-object a.txt
+basic | - | hash-object -w a.txt
+basic | - | hash-object -t commit a.txt
+basic | - | hash-object --stdin @@ hello\n
+basic | - | hash-object -w --stdin @@ hello\n
+basic | - | hash-object a.txt b.txt
+basic | - | hash-object nonesuch
+basic | - | hash-object -t bogus a.txt
+basic | - | hash-object --stdin-paths @@ a.txt\nb.txt\n
+# --- write-tree / commit-tree
+basic | - | write-tree
+dirty | - | write-tree
+conflict | git merge other >/dev/null 2>&1 | write-tree
+basic | - | commit-tree HEAD^{tree} -m "plumbing"
+basic | - | commit-tree HEAD^{tree} -p HEAD -m "child"
+basic | - | commit-tree HEAD^{tree} -p HEAD -p topic -m "merge" -m "second para"
+basic | - | commit-tree HEAD^{tree} @@ from stdin\n
+basic | - | commit-tree HEAD -m "not a tree"
+basic | - | commit-tree HEAD^{tree} -p nonesuch -m x
+# --- ls-files
+basic | - | ls-files
+basic | - | ls-files -s
+basic | - | ls-files --stage dir
+basic | - | ls-files -z
+basic | - | ls-files a.txt nonesuch
+basic | - | ls-files --error-unmatch a.txt
+basic | - | ls-files --error-unmatch nonesuch
+dirty | - | ls-files -o
+dirty | - | ls-files -o --exclude-standard
+dirty | - | ls-files -o -i --exclude-standard
+dirty | rm b.txt | ls-files -d
+dirty | rm b.txt | ls-files -m
+dirty | - | ls-files -m
+dirty | - | ls-files -c -m
+conflict | git merge other >/dev/null 2>&1 | ls-files -u
+conflict | git merge other >/dev/null 2>&1 | ls-files -s
+basic | cd dir | ls-files
+basic | cd dir | ls-files --full-name
+# --- check-ref-format
+basic | - | check-ref-format refs/heads/good
+basic | - | check-ref-format refs/heads/bad..name
+basic | - | check-ref-format refs/heads/bad.lock
+basic | - | check-ref-format onelevel
+basic | - | check-ref-format --allow-onelevel onelevel
+basic | - | check-ref-format --refspec-pattern refs/heads/*
+basic | - | check-ref-format refs/heads/*
+basic | - | check-ref-format --normalize refs//heads///x
+basic | - | check-ref-format --branch main
+basic | - | check-ref-format --branch -bad
+# --- add / rm / mv / restore / reset
+dirty | - | add a.txt
+dirty | - | add .
+dirty | - | add -A
+dirty | - | add -u
+dirty | - | add -N untracked.txt
+dirty | - | add -f x.log
+dirty | - | add --dry-run .
+dirty | - | add -v untracked.txt
+dirty | - | add --chmod=+x b.txt
+dirty | - | add nonesuch
+dirty | - | add --renormalize .
+basic | - | rm b.txt
+basic | - | rm --cached b.txt
+basic | - | rm -r dir
+basic | - | rm -n b.txt
+basic | - | rm -f nonesuch
+dirty | - | rm a.txt
+dirty | - | rm -f a.txt
+basic | - | mv b.txt c.txt
+basic | - | mv b.txt dir/
+basic | - | mv -n b.txt c.txt
+basic | - | mv nonesuch x
+basic | - | mv a.txt b.txt
+basic | - | mv -f a.txt b.txt
+dirty | - | restore a.txt
+dirty | - | restore --staged staged.txt
+dirty | - | restore --source=HEAD~1 a.txt
+dirty | - | restore --staged --worktree a.txt
+dirty | - | restore --source=v1 --staged --worktree .
+dirty | - | restore nonesuch
+dirty | - | reset
+dirty | - | reset staged.txt
+dirty | - | reset --soft HEAD~1
+dirty | - | reset --mixed HEAD~1
+dirty | - | reset --hard HEAD~1
+dirty | - | reset --hard
+dirty | - | reset --keep HEAD~1
+dirty | - | reset --merge
+basic | - | reset --hard nonesuch
+# --- commit
+dirty | - | commit -m "msg"
+dirty | - | commit -a -m "msg"
+dirty | - | commit -am "msg"
+dirty | - | commit --allow-empty -m "empty"
+basic | - | commit -m "nothing"
+dirty | - | commit -m "a" -m "b"
+dirty | - | commit --amend -m "amended"
+dirty | - | commit --amend --no-edit
+dirty | - | commit --amend --no-edit --reset-author
+dirty | - | commit -s -m "signed"
+dirty | - | commit --author="Zed <z@example.com>" -m "author"
+dirty | - | commit --date="2024-01-02T03:04:05" -m "date"
+dirty | - | commit --fixup=HEAD
+dirty | - | commit --squash=HEAD -m x
+dirty | - | commit -F - @@ from stdin\n
+dirty | - | commit -q -m quiet
+dirty | - | commit --dry-run -m x
+dirty | - | commit -m "x" -- staged.txt
+dirty | - | commit -m x --no-verify
+dirty | - | commit -m x --cleanup=verbatim
+empty | - | commit -m "empty repo"
+empty | - | commit --allow-empty -m "first"
+# --- switch / checkout / branch / tag
+basic | - | switch topic
+basic | - | switch -c new
+basic | - | switch -c new v1
+basic | - | switch --detach v1
+basic | - | switch -
+basic | - | switch nonesuch
+basic | - | switch -C topic
+basic | - | switch --orphan lonely
+dirty | - | switch topic
+basic | - | checkout topic
+basic | - | checkout -b new
+basic | - | checkout -b new v1
+basic | - | checkout v1
+basic | - | checkout --detach
+basic | - | checkout -- a.txt
+basic | - | checkout v1 -- a.txt
+basic | - | checkout -B topic main
+dirty | - | checkout -f topic
+dirty | - | checkout topic
+basic | - | checkout nonesuch
+basic | - | branch
+basic | - | branch -a
+basic | - | branch -v
+basic | - | branch -vv
+basic | - | branch --show-current
+basic | - | branch new
+basic | - | branch new v1
+basic | - | branch -d topic
+basic | - | branch -D topic
+basic | - | branch -m topic renamed
+basic | - | branch -M topic main
+basic | - | branch -c topic copy
+basic | - | branch --contains v1
+basic | - | branch --no-merged main
+basic | - | branch --merged
+basic | - | branch -l 't*'
+basic | - | branch -d main
+basic | - | branch -u topic
+basic | - | branch --unset-upstream
+basic | - | branch --sort=-committerdate
+basic | - | branch --format=%(refname:short)
+basic | - | tag
+basic | - | tag -l 'v*'
+basic | - | tag -n
+basic | - | tag t1
+basic | - | tag t1 v1
+basic | - | tag -a -m "note" t2
+basic | - | tag -a -m "note" t2 v1
+basic | - | tag -d v1
+basic | - | tag -f v1 HEAD
+basic | - | tag v1
+basic | - | tag --contains v1
+basic | - | tag --points-at v1
+basic | - | tag --sort=-creatordate
+basic | - | tag -n1 -l
+basic | - | tag --format=%(refname:short)\ %(objecttype)
+# --- stash
+dirty | - | stash
+dirty | - | stash -u
+dirty | - | stash -a
+dirty | - | stash push -m "named"
+dirty | - | stash push a.txt
+dirty | git stash | stash list
+dirty | git stash | stash pop
+dirty | git stash | stash apply
+dirty | git stash | stash drop
+dirty | git stash | stash show
+dirty | git stash | stash show -p
+dirty | git stash; git stash -u | stash clear
+dirty | git stash | stash branch rescued
+dirty | git stash | stash pop --index
+dirty | - | stash create
+basic | - | stash
+# --- merge / cherry-pick / revert / rebase
+merge | git switch -q -c work HEAD~3 | merge main
+merge | git switch -q -c work HEAD~3 | merge --no-ff main
+merge | git switch -q -c work HEAD~3 | merge --ff-only main
+merge | git switch -q -c work HEAD~3 | merge --squash main
+merge | git switch -q -c work HEAD~3 | merge --no-commit main
+merge | git switch -q -c work HEAD~3 | merge -m "custom" --no-ff main
+merge | - | merge side
+conflict | - | merge other
+conflict | git merge other >/dev/null 2>&1 | merge --abort
+conflict | - | merge -s ours other
+conflict | - | merge -X theirs other
+conflict | - | merge -X ours other
+basic | - | merge nonesuch
+basic | - | merge topic
+merge | - | cherry-pick side
+merge | git switch -q topic | cherry-pick main
+merge | git switch -q topic | cherry-pick -x main
+merge | git switch -q topic | cherry-pick -n main
+merge | git switch -q topic | cherry-pick main~1..main
+merge | git switch -q topic | cherry-pick -e main
+conflict | git switch -q topic | cherry-pick other
+conflict | git switch -q topic; git cherry-pick other >/dev/null 2>&1 | cherry-pick --abort
+basic | - | revert HEAD
+basic | - | revert --no-edit HEAD
+basic | - | revert -n HEAD
+basic | - | revert HEAD~1
+merge | - | revert -m 1 HEAD
+merge | - | revert HEAD
+basic | - | rebase topic
+merge | git switch -q side | rebase main
+merge | git switch -q side | rebase --onto main HEAD~1
+merge | git switch -q side | rebase -i main
+merge | git switch -q side | rebase --autosquash main
+merge | git switch -q side | rebase --root
+merge | git switch -q side | rebase --exec true main
+conflict | git switch -q other | rebase main
+conflict | git switch -q other; git rebase main >/dev/null 2>&1 | rebase --abort
+basic | - | rebase nonesuch
+# --- clean / worktree / remote / init
+dirty | - | clean -n
+dirty | - | clean -f
+dirty | - | clean -fd
+dirty | - | clean -fx
+dirty | - | clean -fX
+dirty | - | clean -nd
+dirty | - | clean -fdx
+dirty | - | clean
+basic | - | worktree list
+basic | - | worktree add ../wt
+basic | - | worktree add -b wt-branch ../wt
+basic | - | worktree add --detach ../wt v1
+basic | git worktree add ../wt | worktree list
+basic | git worktree add ../wt | worktree remove ../wt
+basic | git worktree add ../wt; rm -rf ../wt | worktree prune
+basic | - | worktree list --porcelain
+basic | - | remote
+basic | - | remote -v
+basic | git remote add origin /tmp/none | remote -v
+basic | - | remote add origin /tmp/none
+basic | git remote add origin /tmp/none | remote remove origin
+basic | git remote add origin /tmp/none | remote rename origin up
+basic | git remote add origin /tmp/none | remote set-url origin /tmp/other
+basic | git remote add origin /tmp/none | remote get-url origin
+basic | git remote add origin /tmp/none | remote show -n origin
+basic | - | remote get-url origin
+empty | - | init
+empty | - | init -q
+empty | - | init --bare sub
+empty | - | init -b trunk sub
+empty | - | init --object-format=sha256 sub
+empty | - | init sub
+empty | - | init --initial-branch=trunk
+# --- describe / shortlog / blame / grep / reflog / bisect / apply / format-patch / notes (all missing at 0.36.0)
+basic | - | describe
+basic | - | describe --tags
+basic | - | describe --always
+basic | - | describe --abbrev=4 --long
+basic | - | describe --exact-match v1
+basic | - | shortlog -sn
+basic | - | shortlog HEAD
+basic | - | shortlog -sne HEAD
+basic | - | blame a.txt
+basic | - | blame -L 1,2 a.txt
+basic | - | blame --porcelain a.txt
+basic | - | blame -w -e a.txt
+basic | - | annotate a.txt
+basic | - | grep one
+basic | - | grep -n beta
+basic | - | grep -c a
+basic | - | grep -i ONE
+basic | - | grep -l e
+basic | - | grep -w gamma v1
+basic | - | grep --cached delta
+basic | - | grep -e one --and -e two
+basic | - | grep -q nonesuch
+basic | - | reflog
+basic | - | reflog show HEAD
+basic | - | reflog -n 1
+basic | - | reflog exists refs/heads/main
+basic | - | reflog expire --all
+basic | - | reflog delete HEAD@{0}
+basic | - | bisect start HEAD v1
+basic | git bisect start HEAD v1 | bisect good
+basic | git bisect start HEAD v1 | bisect bad
+basic | git bisect start HEAD v1 | bisect log
+basic | git bisect start HEAD v1 | bisect reset
+basic | - | bisect run true
+basic | - | format-patch -1
+basic | - | format-patch -1 --stdout
+basic | - | format-patch v1..main --stdout
+basic | - | format-patch --root -1 --stdout
+basic | - | format-patch -o out -1
+basic | - | apply --check x.patch
+basic | - | notes add -m "note"
+basic | - | notes show
+basic | git notes add -m n | notes list
+basic | - | submodule status
+basic | - | submodule add ../none sub
+basic | - | submodule update --init
+basic | - | gc
+basic | - | maintenance run
+basic | - | fsck
+basic | - | prune
+basic | - | repack
+basic | - | count-objects -v
+basic | - | sparse-checkout list
+basic | - | archive HEAD --format=tar
+basic | - | bundle create out.bundle --all
+basic | - | range-diff topic main main
+basic | - | cherry topic main
+basic | - | merge-tree --write-tree main topic
+basic | - | name-rev HEAD
+basic | - | var GIT_AUTHOR_IDENT
+basic | - | var -l
+basic | - | whatchanged
+basic | - | pack-redundant --all
+basic | - | stripspace @@ a  \n\n\nb\n
+basic | - | check-ignore -v x.log
+dirty | - | check-ignore x.log
+basic | - | diff-tree -r HEAD
+basic | - | diff-tree --name-only -r HEAD
+basic | - | diff-index HEAD
+basic | - | diff-files
+basic | - | read-tree HEAD
+basic | - | update-index --refresh
+basic | - | checkout-index -a
+basic | - | mktree @@ 100644 blob e69de29bb2d1d6434b8b29ae775ad8c2e48c5391\tempty\n
+basic | - | cat-file -t HEAD
+basic | - | cat-file -s HEAD
+basic | - | cat-file -p HEAD
+basic | - | cat-file -p HEAD^{tree}
+basic | - | cat-file commit HEAD
+basic | - | cat-file blob HEAD:a.txt
+basic | - | cat-file -e HEAD
+basic | - | cat-file -e nonesuch
+basic | - | cat-file --batch @@ HEAD\n
+basic | - | cat-file --batch-check @@ HEAD\n
+basic | - | cat-file -t nonesuch
+basic | - | ls-tree HEAD
+basic | - | ls-tree -r HEAD
+basic | - | ls-tree -r -t HEAD
+basic | - | ls-tree --name-only HEAD
+basic | - | ls-tree -l HEAD
+basic | - | ls-tree HEAD dir
+basic | - | ls-tree -d HEAD
+basic | - | ls-tree -z HEAD
+basic | - | rev-parse HEAD
+basic | - | rev-parse HEAD~1 v1
+basic | - | rev-parse --short HEAD
+basic | - | rev-parse --abbrev-ref HEAD
+basic | - | rev-parse --show-toplevel
+basic | - | rev-parse --git-dir
+basic | - | rev-parse --is-inside-work-tree
+basic | - | rev-parse --verify HEAD
+basic | - | rev-parse --verify nonesuch
+basic | - | rev-parse --show-prefix
+basic | - | rev-parse --symbolic-full-name HEAD
+basic | - | rev-parse HEAD^{tree}
+basic | - | rev-parse main..topic
+basic | - | rev-parse --is-bare-repository
+basic | - | ls-remote . 
+basic | - | ls-remote --heads .
+# --- log / show / diff options beyond the first cases
+basic | - | log --stat
+basic | - | log -p -1
+basic | - | log --name-status
+basic | - | log --author=Ann
+basic | - | log --grep=second
+basic | - | log --since=2023-11-14
+basic | - | log -S"TWO"
+basic | - | log -- a.txt
+basic | - | log --follow -- a.txt
+basic | - | log --first-parent --oneline
+basic | - | log --decorate --oneline
+basic | - | log --date=iso -1
+basic | - | log --format=fuller -1
+basic | - | log --format=%an\ %ae\ %cn\ %s -2
+basic | - | log --pretty=raw -1
+basic | - | log --reverse --oneline
+basic | - | log --no-merges --oneline
+basic | - | log --oneline --graph --decorate --all
+basic | - | log v1..main --oneline
+basic | - | log -L 1,2:a.txt
+basic | - | log --show-signature -1
+basic | - | log --notes -1
+basic | - | log --left-right --oneline main...topic
+basic | - | log --boundary --oneline v1..main
+basic | - | log --abbrev-commit --oneline
+basic | - | log --shortstat
+basic | - | log --numstat
+basic | - | log --raw
+basic | - | log -z --format=%s
+merge | - | log --merges --oneline
+merge | - | log -m -p -1
+merge | - | log --cc -1
+merge | - | log --graph --oneline
+merge | - | show HEAD
+merge | - | show --first-parent HEAD
+merge | - | show --stat HEAD
+basic | - | show v2
+basic | - | show HEAD:a.txt
+basic | - | show HEAD:dir
+basic | - | show --format=%H -s
+basic | - | show --name-only
+basic | - | show -s --format=%s v1
+basic | - | diff v1
+basic | - | diff v1 HEAD
+basic | - | diff v1..HEAD
+basic | - | diff v1...HEAD
+basic | - | diff --stat v1
+basic | - | diff --numstat v1
+basic | - | diff --shortstat v1
+basic | - | diff --name-only v1
+basic | - | diff --name-status v1
+basic | - | diff --summary v1
+basic | - | diff -U0 v1
+basic | - | diff -w v1
+basic | - | diff --color=always v1
+basic | - | diff --word-diff v1
+basic | - | diff --patience v1
+basic | - | diff --minimal v1
+basic | - | diff --exit-code v1
+basic | - | diff --quiet v1
+basic | - | diff --no-index a.txt b.txt
+dirty | - | diff --cached
+dirty | - | diff HEAD
+dirty | - | diff -- a.txt
+dirty | - | diff --check
+dirty | - | diff --raw
+dirty | - | diff --stat=60
+dirty | - | diff --color-moved
+dirty | - | diff --ignore-all-space
+dirty | - | diff --diff-filter=M
+dirty | - | diff --submodule
+dirty | - | status -s
+dirty | - | status --porcelain
+dirty | - | status --porcelain=v2 -z
+dirty | - | status -sb
+dirty | - | status --ignored
+dirty | - | status -uno
+dirty | - | status --long
+dirty | - | status --show-stash
+dirty | - | status --no-ahead-behind
+dirty | - | status --column
+dirty | - | status -v
+dirty | - | status -vv
+dirty | - | status --renames
+dirty | - | status -- dir
+conflict | git merge other >/dev/null 2>&1 | status
+conflict | git merge other >/dev/null 2>&1 | status -s
+conflict | git merge other >/dev/null 2>&1 | diff
+conflict | git merge other >/dev/null 2>&1 | log --merge --oneline

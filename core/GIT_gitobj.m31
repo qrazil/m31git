@@ -1,0 +1,859 @@
+// `cat-file`, `ls-tree` and `rev-parse` with git's options: git's grammar in,
+// git's bytes and exit statuses out (the table of `GIT_clitable` gives each
+// its Oro spelling). What a command does not take is refused with status 129
+// and a message that names docs/GIT-PARITY.md.
+
+import io;
+import os;
+import fs;
+import text;
+import core.GIT_object;
+import core.GIT_refs;
+import core.GIT_revparse;
+import core.GIT_repository;
+import core.GIT_gitcommon;
+import core.GIT_gitwrite;
+
+int refuse(str command, str what) {
+    io.eprint("error: " + what + " of " + command + " is not in 1git (see docs/GIT-PARITY.md)");
+    return 129;
+}
+
+int usage(str message) {
+    io.eprint("usage: " + message);
+    return 129;
+}
+
+str text_of(bytes data) {
+    return data.utf8().or("");
+}
+
+// --- cat-file ---------------------------------------------------------------------------
+
+/// A tree as `ls-tree` and `cat-file -p` print it.
+bytes tree_lines(List<GIT_object.Entry> entries) {
+    bytes out = [];
+    for (GIT_object.Entry entry in entries) {
+        out.extend((entry.mode_text() + " " + entry.type_word() + " " + entry.id + "\t").to_bytes());
+        out.extend(quoted(entry.name));
+        out.push('\n');
+    }
+    return out;
+}
+
+bytes quoted(bytes name) {
+    bool is_needed = false;
+    for (int byte_value in name) {
+        if (byte_value < ' ' || byte_value == '"' || byte_value == '\\' || byte_value >= 127) {
+            is_needed = true;
+        }
+    }
+    if (!is_needed) {
+        return name;
+    }
+    bytes output = [];
+    output.push('"');
+    for (int byte_value in name) {
+        if (byte_value == 7) {
+            escape(output, 97);
+        } else if (byte_value == 8) {
+            escape(output, 98);
+        } else if (byte_value == '\t') {
+            escape(output, 116);
+        } else if (byte_value == '\n') {
+            escape(output, 110);
+        } else if (byte_value == 11) {
+            escape(output, 118);
+        } else if (byte_value == 12) {
+            escape(output, 102);
+        } else if (byte_value == '\r') {
+            escape(output, 114);
+        } else if (byte_value == '"' || byte_value == '\\') {
+            escape(output, byte_value);
+        } else if (byte_value < ' ' || byte_value >= 127) {
+            output.push('\\');
+            output.push(48 + (byte_value >> 6 & 7));
+            output.push(48 + (byte_value >> 3 & 7));
+            output.push(48 + (byte_value & 7));
+        } else {
+            output.push(byte_value);
+        }
+    }
+    output.push('"');
+    return output;
+}
+
+void escape(bytes output, int byte_value) {
+    output.push('\\');
+    output.push(byte_value);
+}
+
+/// The object `spec` names and what it is, or "" after git's message.
+str object_named(GIT_gitcommon.Ctx context, str spec) {
+    match (GIT_revparse.object_id(context.gitdir, spec)) {
+        case Ok(str id): {
+            return id;
+        }
+        case Err(_): {
+            io.eprint("fatal: Not a valid object name " + spec);
+            return "";
+        }
+    }
+}
+
+/// `<type> <object>` of git: the object as that type, a tag or a commit
+/// looked through to the tree, or a tag to its commit.
+str as_type(GIT_gitcommon.Ctx context, str id, str kind) {
+    str current = id;
+    for (int depth in 0 .. 8) {
+        match (GIT_object.read(context.gitdir, current)) {
+            case Ok(GIT_object.Object object): {
+                if (object.kind() == kind) {
+                    return current;
+                }
+                match (object.body) {
+                    case Tag(GIT_object.Tag tag): {
+                        current = tag.object;
+                    }
+                    case Commit(GIT_object.Commit commit): {
+                        if (kind == "tree") {
+                            current = commit.tree;
+                        } else {
+                            return "";
+                        }
+                    }
+                    case Blob: {
+                        return "";
+                    }
+                    case Tree(_): {
+                        return "";
+                    }
+                }
+            }
+            case Err(_): {
+                return "";
+            }
+        }
+    }
+    return "";
+}
+
+pub int run_cat_file(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-t", "-s", "-p", "-e", "--batch=?", "--batch-check=?", "--batch-command=?", "--textconv", "--filters", "--follow-symlinks", "--buffer", "-Z", "--allow-unknown-type", "--batch-all-objects", "--unordered", "--path="]);
+    int bad = GIT_gitwrite.check_opts(opts, "git cat-file <type> <object>");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.flag("textconv") || opts.flag("filters") || opts.flag("follow-symlinks") || opts.flag("Z") || opts.has("batch-command") || opts.flag("batch-all-objects") || opts.has("path")) {
+        return refuse("cat-file", "this option");
+    }
+    List<str> words = opts.paths();
+    if (opts.has("batch") || opts.has("batch-check")) {
+        return batch(context, opts);
+    }
+    bool is_pretty = opts.flag("p");
+    int modes = 0;
+    List<bool> chosen = [opts.flag("t"), opts.flag("s"), is_pretty, opts.flag("e")];
+    for (bool one in chosen) {
+        if (one) {
+            modes = modes + 1;
+        }
+    }
+    if (modes > 1) {
+        io.eprint("error: options '-t' and '-s' cannot be used together");
+        return 129;
+    }
+    if (modes == 0) {
+        // cat-file <type> <object>
+        if (words.size() != 2) {
+            return usage("git cat-file <type> <object>");
+        }
+        str wanted = words[0];
+        if (wanted != "blob" && wanted != "tree" && wanted != "commit" && wanted != "tag") {
+            return GIT_gitcommon.fatal("invalid object type \"" + wanted + "\"");
+        }
+        str id = object_named(context, words[1]);
+        if (id == "") {
+            return 128;
+        }
+        str typed = as_type(context, id, wanted);
+        if (typed == "") {
+            return GIT_gitcommon.fatal("git cat-file " + words[1] + ": bad file");
+        }
+        match (GIT_object.read(context.gitdir, typed)) {
+            case Ok(GIT_object.Object object): {
+                GIT_gitwrite.put_bytes(raw_of(object));
+                return 0;
+            }
+            case Err(_): {
+                return 128;
+            }
+        }
+    }
+    if (words.size() != 1) {
+        return usage("git cat-file (-t | -s | -e | -p) <object>");
+    }
+    str id = "";
+    match (GIT_revparse.object_id(context.gitdir, words[0])) {
+        case Ok(str found): {
+            id = found;
+        }
+        case Err(_): {
+            io.eprint("fatal: Not a valid object name " + words[0]);
+            return 128;
+        }
+    }
+    match (GIT_object.read(context.gitdir, id)) {
+        case Ok(GIT_object.Object object): {
+            if (opts.flag("e")) {
+                return 0;
+            }
+            if (opts.flag("t")) {
+                GIT_gitwrite.say(object.kind());
+                return 0;
+            }
+            if (opts.flag("s")) {
+                GIT_gitwrite.say(object.raw.size().to_str());
+                return 0;
+            }
+            match (object.body) {
+                case Tree(List<GIT_object.Entry> entries): {
+                    GIT_gitwrite.put_bytes(tree_lines(entries));
+                }
+                case Blob: {
+                    GIT_gitwrite.put_bytes(object.raw);
+                }
+                case Commit(_): {
+                    GIT_gitwrite.put_bytes(object.raw);
+                }
+                case Tag(_): {
+                    GIT_gitwrite.put_bytes(object.raw);
+                }
+            }
+            return 0;
+        }
+        case Err(_): {
+            if (opts.flag("e")) {
+                return 1;
+            }
+            io.eprint("fatal: git cat-file: could not get object info");
+            return 128;
+        }
+    }
+}
+
+bytes raw_of(GIT_object.Object object) {
+    return object.raw;
+}
+
+/// `--batch` and `--batch-check` with their format atoms.
+int batch(GIT_gitcommon.Ctx context, GIT_gitwrite.Opts opts) {
+    bool is_check = opts.has("batch-check");
+    str format = "%(objectname) %(objecttype) %(objectsize)";
+    str given = opts.value("batch", "");
+    if (is_check) {
+        given = opts.value("batch-check", "");
+    }
+    if (given != "") {
+        format = given;
+    }
+    bytes input = [];
+    match (io.stdin().read_all()) {
+        case Ok(bytes data): {
+            input = data;
+        }
+        case Err(_): {
+        }
+    }
+    bytes out = [];
+    for (str line in text_of(input).split("\n")) {
+        if (line == "") {
+            continue;
+        }
+        str spec = line;
+        str rest = "";
+        match (line.index_of(" ")) {
+            case Some(int space): {
+                spec = line.substr(0, space);
+                rest = line.substr(space + 1, line.size());
+            }
+            case None: {
+            }
+        }
+        match (GIT_revparse.object_id(context.gitdir, line)) {
+            case Ok(str id): {
+                match (GIT_object.read(context.gitdir, id)) {
+                    case Ok(GIT_object.Object object): {
+                        str header = text.replace(text.replace(text.replace(text.replace(format, "%(objectname)", id), "%(objecttype)", object.kind()), "%(objectsize)", object.raw.size().to_str()), "%(rest)", rest);
+                        out.extend((header + "\n").to_bytes());
+                        if (!is_check) {
+                            out.extend(object.raw);
+                            out.push('\n');
+                        }
+                    }
+                    case Err(_): {
+                        out.extend((line + " missing\n").to_bytes());
+                    }
+                }
+            }
+            case Err(_): {
+                out.extend((spec + " missing\n").to_bytes());
+            }
+        }
+    }
+    GIT_gitwrite.put_bytes(out);
+    return 0;
+}
+
+// --- ls-tree ----------------------------------------------------------------------------
+
+type Walk {
+    GIT_gitcommon.Ctx context;
+    bool is_recursive;
+    bool is_trees;
+    bool is_only_trees;
+    bool is_long;
+    bool is_nul;
+    str names;
+    int width;
+    List<str> paths;
+    // the prefix to strip (the directory the command ran in) unless --full-name
+    str strip;
+    bytes out;
+}
+
+/// Is `full` the path of a requested entry, below one, or above one?
+/// 0 not at all, 1 it is (or is below) a requested path, 2 it is above one.
+int relation(Walk walk, str full) {
+    if (walk.paths.size() == 0) {
+        return 1;
+    }
+    int best = 0;
+    for (str given in walk.paths) {
+        str wanted = given;
+        if (wanted.ends_with("/")) {
+            wanted = wanted.substr(0, wanted.size() - 1);
+        }
+        if (full == wanted || full.starts_with(wanted + "/")) {
+            return 1;
+        }
+        if (wanted.starts_with(full + "/")) {
+            best = 2;
+        }
+    }
+    return best;
+}
+
+/// Was `full` named with a trailing slash (its contents wanted)?
+bool is_named_with_slash(Walk walk, str full) {
+    for (str given in walk.paths) {
+        if (given.ends_with("/") && given.substr(0, given.size() - 1) == full) {
+            return true;
+        }
+    }
+    return false;
+}
+
+str abbreviated(Walk walk, str id) {
+    if (walk.width > 0 && walk.width < id.size()) {
+        return id.substr(0, walk.width);
+    }
+    return id;
+}
+
+void list_tree(Walk walk, str tree_id, str prefix, bool is_root_listing) {
+    match (GIT_object.read(walk.context.gitdir, tree_id)) {
+        case Ok(GIT_object.Object object): {
+            match (object.body) {
+                case Tree(List<GIT_object.Entry> entries): {
+                    for (GIT_object.Entry entry in entries) {
+                        str name = text_of(entry.name);
+                        str full = name;
+                        if (prefix != "") {
+                            full = prefix + "/" + name;
+                        }
+                        int relation_of = relation(walk, full);
+                        if (relation_of == 0) {
+                            continue;
+                        }
+                        if (entry.is_tree()) {
+                            bool is_wanted_inside = relation_of == 2 || walk.is_recursive || is_named_with_slash(walk, full);
+                            bool is_shown = false;
+                            if (relation_of == 1 && !is_named_with_slash(walk, full)) {
+                                is_shown = true;
+                            }
+                            if (walk.is_recursive) {
+                                is_shown = walk.is_trees && relation_of == 1;
+                                if (walk.is_only_trees) {
+                                    is_shown = relation_of == 1;
+                                }
+                            } else if (relation_of == 2) {
+                                is_shown = walk.is_trees;
+                            }
+                            if (relation_of == 2 && walk.is_recursive) {
+                                is_shown = walk.is_trees;
+                            }
+                            if (is_shown) {
+                                show(walk, entry, prefix);
+                            }
+                            if (is_wanted_inside && !walk.is_only_trees) {
+                                list_tree(walk, entry.id, full, false);
+                            }
+                            if (walk.is_only_trees && walk.is_recursive) {
+                                list_tree(walk, entry.id, full, false);
+                            }
+                        } else if (relation_of == 1 && !walk.is_only_trees) {
+                            show(walk, entry, prefix);
+                        }
+                    }
+                }
+                case Blob: {
+                }
+                case Commit(_): {
+                }
+                case Tag(_): {
+                }
+            }
+        }
+        case Err(_): {
+        }
+    }
+}
+
+void show(Walk walk, GIT_object.Entry entry, str prefix_of_entry) {
+    // the directory part as text, the entry's own name as the octets it has
+    str directory = prefix_of_entry;
+    str shown_directory = directory;
+    if (walk.strip != "") {
+        if (directory == walk.strip) {
+            shown_directory = "";
+        } else if (directory.starts_with(walk.strip + "/")) {
+            shown_directory = directory.substr(walk.strip.size() + 1, directory.size());
+        }
+    }
+    bytes name = [];
+    if (shown_directory != "") {
+        name.extend((shown_directory + "/").to_bytes());
+    }
+    name.extend(entry.name);
+    if (!walk.is_nul) {
+        name = quoted(name);
+    }
+    str end = "\n";
+    if (walk.is_nul) {
+        end = "\x00";
+    }
+    if (walk.names == "only" || walk.names == "status") {
+        walk.out.extend(name);
+        walk.out.extend(end.to_bytes());
+        return;
+    }
+    if (walk.names == "object") {
+        walk.out.extend((abbreviated(walk, entry.id) + end).to_bytes());
+        return;
+    }
+    str head = entry.mode_text() + " " + entry.type_word() + " " + abbreviated(walk, entry.id);
+    if (walk.is_long) {
+        str size = "-";
+        if (!entry.is_tree() && !entry.is_commit()) {
+            match (GIT_object.read(walk.context.gitdir, entry.id)) {
+                case Ok(GIT_object.Object blob): {
+                    size = blob.raw.size().to_str();
+                }
+                case Err(_): {
+                }
+            }
+        }
+        while (size.size() < 7) {
+            size = " " + size;
+        }
+        head = head + " " + size;
+    }
+    walk.out.extend((head + "\t").to_bytes());
+    walk.out.extend(name);
+    walk.out.extend(end.to_bytes());
+}
+
+pub int run_ls_tree(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-d", "-r", "-t", "-l --long", "-z", "--name-only --name-status", "--object-only", "--full-name", "--full-tree", "--abbrev=?", "--format="]);
+    int bad = GIT_gitwrite.check_opts(opts, "git ls-tree [<options>] <tree-ish> [<path>...]");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.has("format")) {
+        return refuse("ls-tree", "--format");
+    }
+    List<str> words = opts.paths();
+    if (words.size() < 1) {
+        return usage("git ls-tree [<options>] <tree-ish> [<path>...]");
+    }
+    str tree = "";
+    match (GIT_revparse.tree_id(context.gitdir, words[0])) {
+        case Ok(str found): {
+            tree = found;
+        }
+        case Err(_): {
+            return GIT_gitcommon.fatal("Not a valid object name " + words[0]);
+        }
+    }
+    Walk walk = Walk(context, opts.flag("r"), opts.flag("t"), opts.flag("d"), opts.flag("long"), opts.flag("z"), "", 0, [], "", []);
+    if (opts.flag("name-only")) {
+        walk.names = "only";
+    }
+    if (opts.flag("object-only")) {
+        walk.names = "object";
+    }
+    if (opts.has("abbrev")) {
+        walk.width = opts.value("abbrev", "").parse_int().or(7);
+    }
+    if (walk.is_only_trees) {
+        walk.is_recursive = opts.flag("r");
+    }
+    bool is_full = opts.flag("full-tree");
+    str prefix = context.prefix;
+    if (is_full) {
+        prefix = "";
+    }
+    for (int index in 1 .. words.size()) {
+        str one = words[index];
+        if (prefix != "" && !one.starts_with("/")) {
+            one = prefix + "/" + one;
+        }
+        walk.paths.push(one);
+    }
+    if (walk.paths.size() == 0 && prefix != "") {
+        walk.paths.push(prefix + "/");
+    }
+    if (!opts.flag("full-name")) {
+        walk.strip = prefix;
+    }
+    list_tree(walk, tree, "", true);
+    GIT_gitwrite.put_bytes(walk.out);
+    return 0;
+}
+
+// --- rev-parse --------------------------------------------------------------------------
+
+str unique_abbrev(GIT_gitcommon.Ctx context, str id, int width) {
+    int size = width;
+    if (size < 4) {
+        size = 4;
+    }
+    while (size < id.size() && GIT_object.matching(context.gitdir, id.substr(0, size)).size() > 1) {
+        size = size + 1;
+    }
+    return id.substr(0, size);
+}
+
+/// The ref a name resolves to as a full name, or "".
+str full_ref_of(GIT_gitcommon.Ctx context, str spec) {
+    if (spec == "HEAD") {
+        match (GIT_refs.head(context.gitdir)) {
+            case Ok(GIT_refs.Head head): {
+                match (head) {
+                    case Born(str ref, _): {
+                        return ref;
+                    }
+                    case Unborn(str ref): {
+                        return ref;
+                    }
+                    case Detached(_): {
+                        return "HEAD";
+                    }
+                }
+            }
+            case Err(_): {
+                return "";
+            }
+        }
+    }
+    List<str> prefixes = ["", "refs/", "refs/tags/", "refs/heads/", "refs/remotes/"];
+    for (str prefix in prefixes) {
+        if (GIT_refs.has_ref(context.gitdir, prefix + spec)) {
+            return prefix + spec;
+        }
+    }
+    return "";
+}
+
+str short_of(str full) {
+    List<str> prefixes = ["refs/heads/", "refs/tags/", "refs/remotes/", "refs/"];
+    for (str prefix in prefixes) {
+        if (full.starts_with(prefix)) {
+            return full.substr(prefix.size(), full.size());
+        }
+    }
+    return full;
+}
+
+bool is_revision(str gitdir, str word) {
+    match (GIT_revparse.object_id(gitdir, word)) {
+        case Ok(_): {
+            return true;
+        }
+        case Err(_): {
+            return false;
+        }
+    }
+}
+
+/// `--short`, `--abbrev-ref` and `--show-object-format` on their own take no
+/// value in git: spelled with an empty one for the option parser.
+List<str> bare_values(List<str> argv) {
+    List<str> out = [];
+    for (str word in argv) {
+        if (word == "--short" || word == "--abbrev-ref" || word == "--show-object-format") {
+            out.push(word + "=");
+        } else {
+            out.push(word);
+        }
+    }
+    return out;
+}
+
+pub int run_rev_parse(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(bare_values(argv), ["--git-dir", "--absolute-git-dir", "--git-common-dir", "--show-toplevel", "--show-prefix", "--show-cdup", "--is-inside-work-tree", "--is-inside-git-dir", "--is-bare-repository", "--is-shallow-repository", "--verify", "-q --quiet", "--short=", "--abbrev-ref=", "--symbolic", "--symbolic-full-name", "--default=", "--all", "--branches", "--tags", "--remotes", "--revs-only", "--no-revs", "--show-object-format=", "--git-path=", "--sq", "--end-of-options"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git rev-parse [<options>] <args>...");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.flag("sq")) {
+        return refuse("rev-parse", "--sq");
+    }
+    bytes out = [];
+    bool is_any = false;
+    str gitdir = context.gitdir;
+    if (opts.flag("git-dir")) {
+        is_any = true;
+        str shown = gitdir;
+        if (!context.is_bare && context.prefix == "" && gitdir == fs.join(context.root, ".git")) {
+            shown = ".git";
+        }
+        if (context.is_bare && context.prefix == "") {
+            shown = ".";
+        }
+        out.extend((shown + "\n").to_bytes());
+    }
+    if (opts.flag("absolute-git-dir")) {
+        is_any = true;
+        out.extend((gitdir + "\n").to_bytes());
+    }
+    if (opts.flag("git-common-dir")) {
+        is_any = true;
+        str common = GIT_repository.common(gitdir);
+        if (common == fs.join(context.root, ".git") && context.prefix == "") {
+            common = ".git";
+        }
+        out.extend((common + "\n").to_bytes());
+    }
+    if (opts.flag("show-toplevel")) {
+        is_any = true;
+        if (context.is_bare) {
+            return GIT_gitcommon.fatal("this operation must be run in a work tree");
+        }
+        out.extend((context.root + "\n").to_bytes());
+    }
+    if (opts.flag("show-prefix")) {
+        is_any = true;
+        if (context.prefix == "") {
+            out.extend("\n".to_bytes());
+        } else {
+            out.extend((context.prefix + "/\n").to_bytes());
+        }
+    }
+    if (opts.flag("show-cdup")) {
+        is_any = true;
+        str climb = "";
+        if (context.prefix != "") {
+            for (str part in context.prefix.split("/")) {
+                climb = climb + "../";
+            }
+        }
+        out.extend((climb + "\n").to_bytes());
+    }
+    if (opts.flag("is-inside-work-tree")) {
+        is_any = true;
+        if (context.is_bare) {
+            out.extend("false\n".to_bytes());
+        } else {
+            out.extend("true\n".to_bytes());
+        }
+    }
+    if (opts.flag("is-inside-git-dir")) {
+        is_any = true;
+        out.extend("false\n".to_bytes());
+    }
+    if (opts.flag("is-bare-repository")) {
+        is_any = true;
+        if (context.is_bare) {
+            out.extend("true\n".to_bytes());
+        } else {
+            out.extend("false\n".to_bytes());
+        }
+    }
+    if (opts.flag("is-shallow-repository")) {
+        is_any = true;
+        if (fs.is_file(fs.join(GIT_repository.common(gitdir), "shallow"))) {
+            out.extend("true\n".to_bytes());
+        } else {
+            out.extend("false\n".to_bytes());
+        }
+    }
+    if (opts.has("show-object-format")) {
+        is_any = true;
+        if (GIT_object.hex_length(gitdir) == 64) {
+            out.extend("sha256\n".to_bytes());
+        } else {
+            out.extend("sha1\n".to_bytes());
+        }
+    }
+    if (opts.has("git-path")) {
+        is_any = true;
+        out.extend((fs.join(gitdir, opts.value("git-path", "")) + "\n").to_bytes());
+    }
+    if (opts.flag("all") || opts.flag("branches") || opts.flag("tags") || opts.flag("remotes")) {
+        is_any = true;
+        match (GIT_refs.all(gitdir)) {
+            case Ok(List<GIT_refs.Ref> refs): {
+                for (GIT_refs.Ref one in refs) {
+                    bool is_wanted = opts.flag("all") || (opts.flag("branches") && one.name.starts_with("refs/heads/")) || (opts.flag("tags") && one.name.starts_with("refs/tags/")) || (opts.flag("remotes") && one.name.starts_with("refs/remotes/"));
+                    if (is_wanted) {
+                        out.extend((one.id + "\n").to_bytes());
+                    }
+                }
+            }
+            case Err(_): {
+            }
+        }
+    }
+    List<str> words = opts.paths();
+    if (words.size() == 0 && opts.has("default")) {
+        words.push(opts.value("default", ""));
+    }
+    if (opts.flag("verify")) {
+        if (words.size() != 1) {
+            if (opts.flag("quiet")) {
+                return 1;
+            }
+            return GIT_gitcommon.fatal("Needed a single revision");
+        }
+        match (GIT_revparse.object_id(gitdir, words[0])) {
+            case Ok(str id): {
+                if (opts.has("short")) {
+                    int width = opts.value("short", "").parse_int().or(GIT_gitcommon.default_abbrev(context));
+                    id = unique_abbrev(context, id, width);
+                }
+                out.extend((id + "\n").to_bytes());
+                GIT_gitwrite.put_bytes(out);
+                return 0;
+            }
+            case Err(_): {
+                if (opts.flag("quiet")) {
+                    return 1;
+                }
+                return GIT_gitcommon.fatal("Needed a single revision");
+            }
+        }
+    }
+    for (str word in words) {
+        if (word.starts_with("-") && word != "-") {
+            if (!opts.flag("no-revs")) {
+                out.extend((word + "\n").to_bytes());
+            }
+            continue;
+        }
+        if (opts.flag("no-revs") && !word.contains("..")) {
+            // a word that is not a revision is a path: printed
+            bool is_rev = is_revision(gitdir, word);
+            if (!is_rev) {
+                out.extend((word + "\n").to_bytes());
+            }
+            continue;
+        }
+        if (opts.flag("symbolic-full-name")) {
+            str full = full_ref_of(context, word);
+            if (full != "") {
+                out.extend((full + "\n").to_bytes());
+            }
+            continue;
+        }
+        if (opts.flag("symbolic")) {
+            out.extend((word + "\n").to_bytes());
+            continue;
+        }
+        if (opts.has("abbrev-ref")) {
+            str full = full_ref_of(context, word);
+            if (full == "" || full == "HEAD" && word == "HEAD") {
+                match (GIT_revparse.object_id(gitdir, word)) {
+                    case Ok(str id): {
+                        if (full == "HEAD") {
+                            out.extend("HEAD\n".to_bytes());
+                        } else {
+                            out.extend((word + "\n").to_bytes());
+                        }
+                    }
+                    case Err(_): {
+                        return GIT_gitcommon.fatal("ambiguous argument '" + word + "': unknown revision or path not in the working tree.");
+                    }
+                }
+                continue;
+            }
+            out.extend((short_of(full) + "\n").to_bytes());
+            continue;
+        }
+        match (GIT_revparse.rev_lines(gitdir, word)) {
+            case Ok(List<str> lines): {
+                if (!opts.flag("no-revs")) {
+                    for (str line in lines) {
+                        str shown = line;
+                        if (opts.has("short")) {
+                            bool is_excluded = line.starts_with("^");
+                            str bare = line;
+                            if (is_excluded) {
+                                bare = line.substr(1, line.size());
+                            }
+                            int width = opts.value("short", "").parse_int().or(GIT_gitcommon.default_abbrev(context));
+                            shown = unique_abbrev(context, bare, width);
+                            if (is_excluded) {
+                                shown = "^" + shown;
+                            }
+                        }
+                        out.extend((shown + "\n").to_bytes());
+                    }
+                }
+            }
+            case Err(GIT_revparse.Error error): {
+                // not a revision: a path, printed as it is unless only revisions are asked for
+                if (opts.flag("revs-only")) {
+                    continue;
+                }
+                GIT_gitwrite.put_bytes(out);
+                io.eprint("fatal: ambiguous argument '" + word + "': unknown revision or path not in the working tree.");
+                io.eprint("reason: " + error.to_str());
+                io.eprint("Use '--' to separate paths from revisions, like this:");
+                io.eprint("'git <command> [<revision>...] -- [<file>...]'");
+                return 128;
+            }
+        }
+    }
+    if (!is_any && words.size() == 0) {
+        return 0;
+    }
+    GIT_gitwrite.put_bytes(out);
+    return 0;
+}

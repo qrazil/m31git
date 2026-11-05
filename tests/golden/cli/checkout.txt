@@ -1,0 +1,19 @@
+usage: 1git -checkout [options] [<REV>]
+
+switch branches or restore files, git's way (see -switch and -restore)
+
+arguments:
+  [<REV>]                   a branch or a revision to check out (default: stay)
+
+options:
+       --help               show this help
+       --path PATH...       restore only these paths from the target (put it last)
+  --b, --create NAME        create a branch and switch to it
+  --B, --reset-create NAME  create or reset a branch and switch to it
+  --d, --detach             detach HEAD at the target
+  --f, --force              throw local changes away
+       --ours               for paths in a merge: take our side
+       --theirs             for paths in a merge: take their side
+  --t, --track              set the upstream of a new branch
+  --p, --patch              choose the hunks to restore
+  --q, --quiet              print nothing

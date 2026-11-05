@@ -14,6 +14,7 @@ commands:
       -reset                   move the current branch to another commit
   -c, -commit                  record the staged changes as a commit
   -w, -switch                  change branch
+      -checkout                switch branches or restore files, git's way (see -switch and -restore)
   -b, -branch                  list, create, rename and delete branches
   -t, -tag                     list, create and delete tags
       -stash                   put the changes away, leaving a clean work tree
@@ -47,9 +48,21 @@ commands:
       -remote-prune            delete remote-tracking refs the remote no longer has
       -remote-set-head         set what the remote's HEAD is here
       -remote-refs             list the refs of a remote without fetching
+      -config                  read, write, list and remove configuration
+      -merge-base              the best common ancestor of two commits
+      -rev-list                list the commits reachable from revisions, newest first
+      -symbolic-ref            read, set or delete a symbolic ref such as HEAD
+      -update-ref              set, move or delete a ref, checking what it was
+      -show-ref                list refs with the objects they name
+      -for-each-ref            list refs with the fields you ask for
+      -hash-object             the object name of a file, and optionally store it
+      -write-tree              write the index as a tree object
+      -commit-tree             write a commit object for a tree
+      -ls-files                list the files of the index and the work tree
+      -check-ref-format        check that a ref name is well formed
       -cat-file                print an object's type, size or contents
       -ls-tree                 list a tree's entries
-      -rev-parse               the object names a revision resolves to
+      -rev-parse               the object names a revision resolves to, and facts about the repository
       -refs                    every ref in the repository, with what it points at
       -migrate                 write a git command line the 1git way
 
@@ -62,7 +75,7 @@ options:
        --work-tree DIR         the work tree, when it is not next to the git directory
        --completions SHELL     print a shell completion script (bash, zsh or fish) and exit
 
-exit status: 0 done, 1 a command failed (the commands after it did not run), 2 the line was not understood (nothing ran)
+exit status: 0 done, git's own status when a command failed (128 fatal, 1 plain failure; the commands after it did not run), 2 the line was not understood (nothing ran)
 one dash is a command, two dashes an option, anything else data: 1git -add --all -commit --message 'fix' -push
 an option's value cannot start with a dash: write --message=-x. Put an option that takes a list (--path, --message) after the operands.
 from git: 1git -migrate 'git log --oneline -5' (docs/MIGRATING-FROM-GIT.md)

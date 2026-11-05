@@ -1,0 +1,1917 @@
+// The plumbing commands of `1git` beyond `cat-file`, `ls-tree` and
+// `rev-parse`: `merge-base`, `rev-list`, `symbolic-ref`, `update-ref`,
+// `show-ref`, `for-each-ref`, `hash-object`, `write-tree`, `commit-tree`,
+// `ls-files` and `check-ref-format`. git's grammar in, git's bytes and exit
+// statuses out; the table of `GIT_clitable` gives each its Oro spelling.
+// Options a command does not take are refused with status 129 and a message
+// that names docs/GIT-PARITY.md.
+
+import io;
+import os;
+import fs;
+import core.GIT_object;
+import core.GIT_refs;
+import core.GIT_revparse;
+import core.GIT_graph;
+import core.GIT_index;
+import core.GIT_reflog;
+import core.GIT_repository;
+import core.GIT_branches;
+import core.GIT_ignore;
+import core.GIT_config;
+import core.GIT_gitcommon;
+import core.GIT_gitwrite;
+
+int refuse(str command, str what) {
+    io.eprint("error: " + what + " of " + command + " is not in 1git (see docs/GIT-PARITY.md)");
+    return 129;
+}
+
+int usage(str text) {
+    io.eprint("usage: " + text);
+    return 129;
+}
+
+/// The full object name `spec` stands for, or "" after printing git's message.
+str need_id(GIT_gitcommon.Ctx context, str spec) {
+    match (GIT_revparse.object_id(context.gitdir, spec)) {
+        case Ok(str id): {
+            return id;
+        }
+        case Err(_): {
+            io.eprint("fatal: Not a valid object name " + spec);
+            return "";
+        }
+    }
+}
+
+str need_commit(GIT_gitcommon.Ctx context, str spec) {
+    match (GIT_revparse.commit_id(context.gitdir, spec)) {
+        case Ok(str id): {
+            return id;
+        }
+        case Err(_): {
+            io.eprint("fatal: Not a valid object name " + spec);
+            return "";
+        }
+    }
+}
+
+// --- merge-base -------------------------------------------------------------------------
+
+pub int run_merge_base(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-a --all", "--octopus", "--independent", "--is-ancestor", "--fork-point"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git merge-base [-a | --all] <commit> <commit>...");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.flag("octopus") || opts.flag("independent") || opts.flag("fork-point")) {
+        return refuse("merge-base", "this option");
+    }
+    List<str> words = opts.paths();
+    if (opts.flag("is-ancestor")) {
+        if (words.size() != 2) {
+            return usage("git merge-base --is-ancestor <commit> <commit>");
+        }
+        str older = need_commit(context, words[0]);
+        str newer = need_commit(context, words[1]);
+        if (older == "" || newer == "") {
+            return 128;
+        }
+        match (GIT_graph.is_ancestor(context.gitdir, older, newer)) {
+            case Ok(bool yes): {
+                if (yes) {
+                    return 0;
+                }
+                return 1;
+            }
+            case Err(_): {
+                return 128;
+            }
+        }
+    }
+    if (words.size() != 2) {
+        if (words.size() < 2) {
+            return usage("git merge-base [-a | --all] <commit> <commit>...");
+        }
+        return refuse("merge-base", "more than two commits");
+    }
+    str first = need_commit(context, words[0]);
+    str second = need_commit(context, words[1]);
+    if (first == "" || second == "") {
+        return 128;
+    }
+    match (GIT_graph.merge_bases(context.gitdir, first, second)) {
+        case Ok(List<str> bases): {
+            if (bases.size() == 0) {
+                return 1;
+            }
+            if (opts.flag("all")) {
+                for (str base in bases) {
+                    GIT_gitwrite.say(base);
+                }
+            } else {
+                GIT_gitwrite.say(bases[0]);
+            }
+            return 0;
+        }
+        case Err(_): {
+            return 128;
+        }
+    }
+}
+
+// --- rev-list ----------------------------------------------------------------------------
+
+/// `-5` is `--max-count=5`.
+List<str> number_options(List<str> argv) {
+    List<str> out = [];
+    for (str word in argv) {
+        if (word.size() > 1 && word.starts_with("-") && word.substr(1, word.size()).parse_int().is_some()) {
+            out.push("--max-count=" + word.substr(1, word.size()));
+        } else {
+            out.push(word);
+        }
+    }
+    return out;
+}
+
+pub int run_rev_list(str start, List<str> overrides, List<str> given) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(number_options(given), ["--count", "-n --max-count=", "--skip=", "--reverse", "--parents", "--no-merges", "--merges", "--all", "--branches", "--tags", "--remotes"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git rev-list [<options>] <commit>... [--] [<path>...]");
+    if (bad >= 0) {
+        return bad;
+    }
+    List<str> include = [];
+    List<str> exclude = [];
+    List<str> words = opts.words;
+    if (opts.has_dashes && opts.after.size() > 0) {
+        return refuse("rev-list", "a path limit");
+    }
+    for (str word in words) {
+        match (GIT_revparse.rev_range(context.gitdir, word)) {
+            case Ok(GIT_revparse.Revs found): {
+                for (str id in found.include) {
+                    include.push(id);
+                }
+                for (str id in found.exclude) {
+                    exclude.push(id);
+                }
+            }
+            case Err(_): {
+                io.eprint("fatal: ambiguous argument '" + word + "': unknown revision or path not in the working tree.");
+                io.eprint("Use '--' to separate paths from revisions, like this:");
+                io.eprint("'git <command> [<revision>...] -- [<file>...]'");
+                return 128;
+            }
+        }
+    }
+    bool is_every = opts.flag("all");
+    if (is_every || opts.flag("branches") || opts.flag("tags") || opts.flag("remotes")) {
+        if (is_every) {
+            match (GIT_refs.resolve(context.gitdir, "HEAD")) {
+                case Ok(str head): {
+                    include.push(head);
+                }
+                case Err(_): {
+                }
+            }
+        }
+        match (GIT_refs.all(context.gitdir)) {
+            case Ok(List<GIT_refs.Ref> refs): {
+                for (GIT_refs.Ref one in refs) {
+                    bool is_wanted = is_every && one.name.starts_with("refs/");
+                    if (opts.flag("branches") && one.name.starts_with("refs/heads/")) {
+                        is_wanted = true;
+                    }
+                    if (opts.flag("tags") && one.name.starts_with("refs/tags/")) {
+                        is_wanted = true;
+                    }
+                    if (opts.flag("remotes") && one.name.starts_with("refs/remotes/")) {
+                        is_wanted = true;
+                    }
+                    if (!is_wanted) {
+                        continue;
+                    }
+                    match (GIT_revparse.commit_id(context.gitdir, one.name)) {
+                        case Ok(str commit): {
+                            include.push(commit);
+                        }
+                        case Err(_): {
+                        }
+                    }
+                }
+            }
+            case Err(_): {
+            }
+        }
+    }
+    if (include.size() == 0 && exclude.size() == 0 && words.size() == 0 && !is_every && !opts.flag("branches") && !opts.flag("tags") && !opts.flag("remotes")) {
+        return usage("git rev-list [<options>] <commit>... [--] [<path>...]");
+    }
+    List<str> commits = [];
+    match (GIT_graph.rev_list(context.gitdir, include, exclude)) {
+        case Ok(List<str> walked): {
+            commits = walked;
+        }
+        case Err(_): {
+            return 128;
+        }
+    }
+    GIT_graph.Graph graph = GIT_graph.open(context.gitdir);
+    List<str> kept = [];
+    int skip = opts.value("skip", "0").parse_int().or(0);
+    int limit = -1;
+    if (opts.has("max-count")) {
+        limit = opts.value("max-count", "").parse_int().or(-1);
+    }
+    int seen = 0;
+    for (str id in commits) {
+        List<str> parents = [];
+        match (graph.parents(id)) {
+            case Ok(List<str> found): {
+                parents = found;
+            }
+            case Err(_): {
+            }
+        }
+        if (opts.flag("no-merges") && parents.size() > 1) {
+            continue;
+        }
+        if (opts.flag("merges") && parents.size() < 2) {
+            continue;
+        }
+        if (seen < skip) {
+            seen = seen + 1;
+            continue;
+        }
+        if (limit >= 0 && kept.size() >= limit) {
+            break;
+        }
+        if (opts.flag("parents")) {
+            kept.push(id + " " + parents.join(" "));
+        } else {
+            kept.push(id);
+        }
+    }
+    if (opts.flag("count")) {
+        GIT_gitwrite.say(kept.size().to_str());
+        return 0;
+    }
+    if (opts.flag("reverse")) {
+        kept.reverse();
+    }
+    bytes out = [];
+    for (str line in kept) {
+        out.extend((line.trim() + "\n").to_bytes());
+    }
+    GIT_gitwrite.put_bytes(out);
+    return 0;
+}
+
+// --- symbolic-ref -----------------------------------------------------------------------
+
+/// The file a ref name is stored in.
+str ref_file(str gitdir, str name) {
+    if (GIT_repository.is_per_worktree(name)) {
+        return fs.join(gitdir, name);
+    }
+    return fs.join(GIT_repository.common(gitdir), name);
+}
+
+pub int run_symbolic_ref(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-q --quiet", "--short", "--no-recurse", "-d --delete", "-m="]);
+    int bad = GIT_gitwrite.check_opts(opts, "git symbolic-ref [-m <reason>] <name> <ref>");
+    if (bad >= 0) {
+        return bad;
+    }
+    List<str> words = opts.paths();
+    if (words.size() < 1 || words.size() > 2) {
+        return usage("git symbolic-ref [-m <reason>] <name> <ref>");
+    }
+    str name = words[0];
+    if (opts.flag("delete")) {
+        if (words.size() != 1) {
+            return usage("git symbolic-ref -d [-q] <name>");
+        }
+        str file = ref_file(context.gitdir, name);
+        if (!fs.is_present(file)) {
+            io.eprint("error: Cannot delete " + name + ", not a symbolic ref");
+            return 1;
+        }
+        match (fs.remove(file)) {
+            case Ok: {
+                return 0;
+            }
+            case Err(_): {
+                return 1;
+            }
+        }
+    }
+    if (words.size() == 2) {
+        str target = words[1];
+        if (name == "HEAD" && !target.starts_with("refs/")) {
+            return GIT_gitcommon.fatal("Refusing to point HEAD outside of refs/");
+        }
+        str before = resolved(context.gitdir, name);
+        match (GIT_refs.update_symbolic(context.gitdir, name, target)) {
+            case Ok(_): {
+                str after = resolved(context.gitdir, name);
+                if (name == "HEAD" && before != "" && after != "") {
+                    match (GIT_reflog.log_update(context.gitdir, "HEAD", before, after, opts.value("m", ""))) {
+                        case Ok(_): {
+                        }
+                        case Err(_): {
+                        }
+                    }
+                }
+                return 0;
+            }
+            case Err(_): {
+                return GIT_gitcommon.fatal("Refusing to set '" + name + "' to invalid ref '" + target + "'");
+            }
+        }
+    }
+    // read
+    str current = name;
+    str shown = "";
+    for (int depth in 0 .. 6) {
+        str file = ref_file(context.gitdir, current);
+        if (!fs.is_present(file)) {
+            if (shown != "") {
+                break;
+            }
+            if (opts.flag("quiet")) {
+                return 1;
+            }
+            return GIT_gitcommon.fatal("No such ref: " + name);
+        }
+        str body = "";
+        match (io.read(file)) {
+            case Ok(str text): {
+                body = text;
+            }
+            case Err(_): {
+            }
+        }
+        if (!body.starts_with("ref: ")) {
+            if (shown == "") {
+                if (opts.flag("quiet")) {
+                    return 1;
+                }
+                return GIT_gitcommon.fatal("ref " + name + " is not a symbolic ref");
+            }
+            break;
+        }
+        shown = body.substr(5, body.size()).trim();
+        current = shown;
+        if (opts.flag("no-recurse")) {
+            break;
+        }
+    }
+    if (opts.flag("short")) {
+        shown = short_name(context.gitdir, shown);
+    }
+    GIT_gitwrite.say(shown);
+    return 0;
+}
+
+/// `refs/heads/x` as `x`: git's shortest unambiguous name.
+str short_name(str gitdir, str full) {
+    List<str> prefixes = ["refs/tags/", "refs/heads/", "refs/remotes/", "refs/"];
+    for (str prefix in prefixes) {
+        if (full.starts_with(prefix)) {
+            return full.substr(prefix.size(), full.size());
+        }
+    }
+    return full;
+}
+
+// --- update-ref -------------------------------------------------------------------------
+
+pub int run_update_ref(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-m=", "-d --delete", "--no-deref", "--create-reflog", "--stdin", "-z"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git update-ref [<options>] -d <refname> [<old-oid>]");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.flag("stdin") || opts.flag("z")) {
+        return refuse("update-ref", "--stdin");
+    }
+    List<str> words = opts.paths();
+    str zero = GIT_gitwrite.zero_id(context.gitdir);
+    if (opts.flag("delete")) {
+        if (words.size() < 1 || words.size() > 2) {
+            return usage("git update-ref [<options>] -d <refname> [<old-oid>]");
+        }
+        str victim = deref_name(context, words[0], opts.flag("no-deref"));
+        if (words.size() == 2) {
+            str want = need_id(context, words[1]);
+            if (want == "") {
+                return 128;
+            }
+            if (resolved(context.gitdir, victim) != want) {
+                io.eprint("error: cannot lock ref '" + victim + "': is at " + resolved(context.gitdir, victim) + " but expected " + want);
+                return 128;
+            }
+        }
+        match (GIT_branches.delete_ref(context.gitdir, victim)) {
+            case Ok(_): {
+                GIT_branches.remove_ref_dirs(context.gitdir, victim);
+                return 0;
+            }
+            case Err(_): {
+                return 128;
+            }
+        }
+    }
+    if (words.size() < 2 || words.size() > 3) {
+        return usage("git update-ref [<options>] <refname> <new-oid> [<old-oid>]");
+    }
+    str name = deref_name(context, words[0], opts.flag("no-deref"));
+    str id = need_id(context, words[1]);
+    if (id == "") {
+        return 128;
+    }
+    Option<str> expect = Option<str>.None;
+    if (words.size() == 3) {
+        if (words[2] == zero || words[2] == "") {
+            expect = Option<str>.Some("");
+        } else {
+            str old = need_id(context, words[2]);
+            if (old == "") {
+                return 128;
+            }
+            expect = Option<str>.Some(old);
+        }
+    }
+    if (id == zero) {
+        return GIT_gitcommon.fatal("update_ref failed for ref '" + name + "': cannot update ref to the null object");
+    }
+    match (GIT_refs.update(context.gitdir, name, id, expect, reflog_message: opts.value("m", ""), is_exact: true)) {
+        case Ok(_): {
+            return 0;
+        }
+        case Err(_): {
+            return GIT_gitcommon.fatal("update_ref failed for ref '" + name + "': cannot lock ref '" + name + "'");
+        }
+    }
+}
+
+/// HEAD (or any symbolic ref) is followed to the branch it names.
+str deref_name(GIT_gitcommon.Ctx context, str name, bool is_raw) {
+    if (is_raw) {
+        return name;
+    }
+    str current = name;
+    for (int depth in 0 .. 6) {
+        str file = ref_file(context.gitdir, current);
+        if (!fs.is_file(file)) {
+            return current;
+        }
+        match (io.read(file)) {
+            case Ok(str body): {
+                if (!body.starts_with("ref: ")) {
+                    return current;
+                }
+                current = body.substr(5, body.size()).trim();
+            }
+            case Err(_): {
+                return current;
+            }
+        }
+    }
+    return current;
+}
+
+// --- show-ref ---------------------------------------------------------------------------
+
+/// The object a tag chain ends at.
+str peeled(str gitdir, str id) {
+    str current = id;
+    for (int depth in 0 .. 8) {
+        match (GIT_object.read(gitdir, current)) {
+            case Ok(GIT_object.Object object): {
+                match (object.body) {
+                    case Tag(GIT_object.Tag tag): {
+                        current = tag.object;
+                    }
+                    case Blob: {
+                        return current;
+                    }
+                    case Tree(_): {
+                        return current;
+                    }
+                    case Commit(_): {
+                        return current;
+                    }
+                }
+            }
+            case Err(_): {
+                return current;
+            }
+        }
+    }
+    return current;
+}
+
+bool is_tag_object(str gitdir, str id) {
+    match (GIT_object.read(gitdir, id)) {
+        case Ok(GIT_object.Object object): {
+            return object.kind() == "tag";
+        }
+        case Err(_): {
+            return false;
+        }
+    }
+}
+
+/// git's show-ref pattern: the name itself or its tail after a `/`.
+bool is_tail_matches(str name, str pattern) {
+    return name == pattern || name.ends_with("/" + pattern);
+}
+
+/// `--abbrev` and `--hash` on their own take no value in git: spelled with an
+/// empty one for the option parser.
+List<str> bare_values(List<str> argv) {
+    List<str> out = [];
+    for (str word in argv) {
+        if (word == "--abbrev" || word == "--hash") {
+            out.push(word + "=");
+        } else {
+            out.push(word);
+        }
+    }
+    return out;
+}
+
+pub int run_show_ref(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(bare_values(argv), ["--head", "--heads --branches", "--tags", "--verify", "-q --quiet", "-d --dereference", "-s", "--hash=", "--abbrev=", "--exists"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git show-ref [--head] [-d | --dereference] [-s | --hash[=<n>]] [--abbrev[=<n>]] [--branches] [--tags] [--] [<pattern>...]");
+    if (bad >= 0) {
+        return bad;
+    }
+    List<str> patterns = opts.paths();
+    if (opts.flag("exists")) {
+        if (patterns.size() != 1) {
+            return usage("git show-ref --exists <ref>");
+        }
+        if (GIT_refs.has_ref(context.gitdir, patterns[0])) {
+            return 0;
+        }
+        io.eprint("error: reference does not exist");
+        return 2;
+    }
+    List<GIT_refs.Ref> all = [];
+    if (opts.flag("head") || opts.flag("verify")) {
+        match (GIT_refs.resolve(context.gitdir, "HEAD")) {
+            case Ok(str head): {
+                if (opts.flag("head")) {
+                    all.push(GIT_refs.Ref("HEAD", head));
+                }
+            }
+            case Err(_): {
+            }
+        }
+    }
+    match (GIT_refs.all(context.gitdir)) {
+        case Ok(List<GIT_refs.Ref> refs): {
+            for (GIT_refs.Ref one in refs) {
+                all.push(one);
+            }
+        }
+        case Err(_): {
+        }
+    }
+    bool is_limited = opts.flag("heads") || opts.flag("tags");
+    List<GIT_refs.Ref> shown = [];
+    if (opts.flag("verify")) {
+        if (patterns.size() == 0) {
+            return GIT_gitcommon.fatal("--verify requires a reference");
+        }
+        for (str pattern in patterns) {
+            bool is_found = false;
+            for (GIT_refs.Ref one in all) {
+                if (one.name == pattern && (pattern == "HEAD" || pattern.starts_with("refs/"))) {
+                    shown.push(one);
+                    is_found = true;
+                }
+            }
+            if (!is_found) {
+                if (!opts.flag("quiet")) {
+                    io.eprint("fatal: '" + pattern + "' - not a valid ref");
+                }
+                return 128;
+            }
+        }
+    } else {
+        for (GIT_refs.Ref one in all) {
+            if (is_limited) {
+                bool is_ok = (opts.flag("heads") && one.name.starts_with("refs/heads/")) || (opts.flag("tags") && one.name.starts_with("refs/tags/"));
+                if (!is_ok) {
+                    continue;
+                }
+            }
+            if (patterns.size() > 0) {
+                bool is_matched = false;
+                for (str pattern in patterns) {
+                    if (is_tail_matches(one.name, pattern)) {
+                        is_matched = true;
+                    }
+                }
+                if (!is_matched) {
+                    continue;
+                }
+            }
+            shown.push(one);
+        }
+    }
+    if (shown.size() == 0) {
+        return 1;
+    }
+    if (opts.flag("quiet")) {
+        return 0;
+    }
+    int width = GIT_object.hex_length(context.gitdir);
+    bool is_hash_only = opts.flag("s") || opts.has("hash");
+    if (opts.has("abbrev") || opts.has("hash")) {
+        str given = opts.value("abbrev", "");
+        if (opts.value("hash", "") != "") {
+            given = opts.value("hash", "");
+        }
+        if (given != "") {
+            width = given.parse_int().or(width);
+            if (width < 4) {
+                width = 4;
+            }
+        } else if (opts.has("abbrev")) {
+            width = 7;
+        } else {
+            width = GIT_object.hex_length(context.gitdir);
+        }
+        if (opts.has("hash") && opts.value("hash", "") == "" && !opts.has("abbrev")) {
+            width = GIT_object.hex_length(context.gitdir);
+        }
+    }
+    bytes out = [];
+    for (GIT_refs.Ref one in shown) {
+        str id = one.id.substr(0, width);
+        if (is_hash_only) {
+            out.extend((id + "\n").to_bytes());
+        } else {
+            out.extend((id + " " + one.name + "\n").to_bytes());
+        }
+        if (opts.flag("dereference") && is_tag_object(context.gitdir, one.id)) {
+            str target = peeled(context.gitdir, one.id).substr(0, width);
+            if (is_hash_only) {
+                out.extend((target + "\n").to_bytes());
+            } else {
+                out.extend((target + " " + one.name + "^{}\n").to_bytes());
+            }
+        }
+    }
+    GIT_gitwrite.put_bytes(out);
+    return 0;
+}
+
+// --- for-each-ref -----------------------------------------------------------------------
+
+type Info {
+    str name;
+    str id;
+    str kind;
+    // the commit (or the tag's commit) the ref ends at, "" when it is a tree or blob
+    str commit_id;
+    GIT_object.Object object;
+    Option<GIT_object.Commit> commit;
+    Option<GIT_object.Tag> tag;
+}
+
+Info info_of(GIT_gitcommon.Ctx context, GIT_refs.Ref one) {
+    GIT_object.Object object = GIT_object.Object(one.id, GIT_object.Body.Blob, []);
+    str kind = "commit";
+    match (GIT_object.read(context.gitdir, one.id)) {
+        case Ok(GIT_object.Object found): {
+            object = found;
+            kind = found.kind();
+        }
+        case Err(_): {
+        }
+    }
+    Info info = Info(one.name, one.id, kind, "", object, Option<GIT_object.Commit>.None, Option<GIT_object.Tag>.None);
+    match (object.body) {
+        case Commit(GIT_object.Commit commit): {
+            info.commit = Option<GIT_object.Commit>.Some(commit);
+            info.commit_id = one.id;
+        }
+        case Tag(GIT_object.Tag tag): {
+            info.tag = Option<GIT_object.Tag>.Some(tag);
+            str target = peeled(context.gitdir, one.id);
+            match (GIT_object.read(context.gitdir, target)) {
+                case Ok(GIT_object.Object inner): {
+                    match (inner.body) {
+                        case Commit(GIT_object.Commit commit): {
+                            info.commit = Option<GIT_object.Commit>.Some(commit);
+                            info.commit_id = target;
+                        }
+                        case Blob: {
+                        }
+                        case Tree(_): {
+                        }
+                        case Tag(_): {
+                        }
+                    }
+                }
+                case Err(_): {
+                }
+            }
+        }
+        case Blob: {
+        }
+        case Tree(_): {
+        }
+    }
+    return info;
+}
+
+str text_of(bytes data) {
+    return data.utf8().or("");
+}
+
+str subject_line(bytes message) {
+    str text = text_of(message);
+    List<str> lines = text.split("\n");
+    str out = "";
+    for (str line in lines) {
+        if (line == "") {
+            break;
+        }
+        if (out != "") {
+            out = out + " ";
+        }
+        out = out + line;
+    }
+    return out;
+}
+
+str body_text(bytes message) {
+    str text = text_of(message);
+    match (text.index_of("\n\n")) {
+        case Some(int offset): {
+            return text.substr(offset + 2, text.size());
+        }
+        case None: {
+            return "";
+        }
+    }
+}
+
+str ident_part(GIT_object.Ident who, str part, str style) {
+    if (part == "name") {
+        return text_of(who.name);
+    }
+    if (part == "email") {
+        if (style == "trim") {
+            return text_of(who.email);
+        }
+        if (style == "localpart") {
+            str mail = text_of(who.email);
+            return mail.substr(0, mail.index_of("@").or(mail.size()));
+        }
+        return "<" + text_of(who.email) + ">";
+    }
+    str shape = style;
+    if (shape == "") {
+        shape = "default";
+    }
+    return GIT_gitcommon.format_date(who.when, who.offset, shape);
+}
+
+/// The value of one `%(atom)`; `ok` false for an atom this does not know.
+type Atom {
+    bool is_ok;
+    str text;
+}
+
+Atom atom_value(GIT_gitcommon.Ctx context, Info info, str atom) {
+    str full = atom;
+    str modifier = "";
+    match (atom.index_of(":")) {
+        case Some(int offset): {
+            full = atom.substr(0, offset);
+            modifier = atom.substr(offset + 1, atom.size());
+        }
+        case None: {
+        }
+    }
+    bool is_deref = full.starts_with("*");
+    if (is_deref) {
+        full = full.substr(1, full.size());
+    }
+    // `*` atoms look through a tag offset the commit it names
+    str id = info.id;
+    if (is_deref) {
+        if (info.tag.is_none()) {
+            return Atom(true, "");
+        }
+        id = info.commit_id;
+        if (id == "") {
+            id = peeled(context.gitdir, info.id);
+        }
+    }
+    if (full == "refname") {
+        if (modifier == "short") {
+            return Atom(true, short_name(context.gitdir, info.name));
+        }
+        if (modifier.starts_with("lstrip=") || modifier.starts_with("strip=")) {
+            int count = modifier.substr(modifier.index_of("=").or(0) + 1, modifier.size()).parse_int().or(0);
+            List<str> parts = info.name.split("/");
+            if (count < 0) {
+                count = parts.size() + count;
+            }
+            if (count > parts.size()) {
+                count = parts.size();
+            }
+            return Atom(true, parts.slice(count, parts.size()).join("/"));
+        }
+        if (modifier.starts_with("rstrip=")) {
+            int count = modifier.substr(7, modifier.size()).parse_int().or(0);
+            List<str> parts = info.name.split("/");
+            if (count < 0) {
+                count = parts.size() + count;
+            }
+            if (count > parts.size()) {
+                count = parts.size();
+            }
+            return Atom(true, parts.slice(0, parts.size() - count).join("/"));
+        }
+        return Atom(true, info.name);
+    }
+    if (full == "objectname") {
+        if (modifier == "short" || modifier.starts_with("short=")) {
+            int width = 7;
+            if (modifier.starts_with("short=")) {
+                width = modifier.substr(6, modifier.size()).parse_int().or(7);
+            }
+            return Atom(true, id.substr(0, width));
+        }
+        return Atom(true, id);
+    }
+    if (full == "objecttype") {
+        if (is_deref) {
+            if (info.commit_id != "") {
+                return Atom(true, "commit");
+            }
+        }
+        return Atom(true, info.kind);
+    }
+    if (full == "objectsize") {
+        return Atom(true, info.object.raw.size().to_str());
+    }
+    if (full == "HEAD") {
+        match (GIT_refs.head(context.gitdir)) {
+            case Ok(GIT_refs.Head head): {
+                match (head) {
+                    case Born(str ref, _): {
+                        if (ref == info.name) {
+                            return Atom(true, "*");
+                        }
+                    }
+                    case Unborn(_): {
+                    }
+                    case Detached(_): {
+                    }
+                }
+            }
+            case Err(_): {
+            }
+        }
+        return Atom(true, " ");
+    }
+    if (full == "symref") {
+        str file = ref_file(context.gitdir, info.name);
+        if (fs.is_file(file)) {
+            str body = read_text(file);
+            if (body.starts_with("ref: ")) {
+                return Atom(true, body.substr(5, body.size()).trim());
+            }
+        }
+        return Atom(true, "");
+    }
+    if (full == "upstream" || full == "push") {
+        if (!info.name.starts_with("refs/heads/")) {
+            return Atom(true, "");
+        }
+        str branch = info.name.substr(11, info.name.size());
+        Option<str> remote = GIT_gitcommon.cfg(context, "branch", branch, "remote");
+        Option<str> merge = GIT_gitcommon.cfg(context, "branch", branch, "merge");
+        if (remote.is_none() || merge.is_none() || full == "push") {
+            return Atom(true, "");
+        }
+        str upstream = merge.or("");
+        if (remote.or("") == ".") {
+            if (modifier == "short") {
+                return Atom(true, short_name(context.gitdir, upstream));
+            }
+            return Atom(true, upstream);
+        }
+        str leaf = upstream;
+        if (upstream.starts_with("refs/heads/")) {
+            leaf = upstream.substr(11, upstream.size());
+        }
+        if (modifier == "short") {
+            return Atom(true, remote.or("") + "/" + leaf);
+        }
+        return Atom(true, "refs/remotes/" + remote.or("") + "/" + leaf);
+    }
+    if (full == "tree" || full == "parent" || full == "numparent" || full == "subject" || full == "body" || full == "contents" || full == "author" || full == "committer" || full.starts_with("author") || full.starts_with("committer")) {
+        // from the commit (a tag is looked through only for `*`)
+        Option<GIT_object.Commit> commit = info.commit;
+        if (!is_deref && info.tag.is_some() && (full == "subject" || full == "body" || full == "contents")) {
+            GIT_object.Tag tag = info.tag.or(GIT_object.Tag("", "", [], [], [], Option<GIT_object.Ident>.None));
+            if (full == "subject") {
+                return Atom(true, subject_line(tag.message));
+            }
+            if (full == "body") {
+                return Atom(true, body_text(tag.message));
+            }
+            if (modifier == "subject") {
+                return Atom(true, subject_line(tag.message));
+            }
+            return Atom(true, text_of(tag.message));
+        }
+        match (commit) {
+            case Some(GIT_object.Commit found): {
+                if (full == "tree") {
+                    return Atom(true, found.tree);
+                }
+                if (full == "parent") {
+                    return Atom(true, found.parents.join(" "));
+                }
+                if (full == "numparent") {
+                    return Atom(true, found.parents.size().to_str());
+                }
+                if (full == "subject") {
+                    return Atom(true, subject_line(found.message));
+                }
+                if (full == "body") {
+                    return Atom(true, body_text(found.message));
+                }
+                if (full == "contents") {
+                    if (modifier == "subject") {
+                        return Atom(true, subject_line(found.message));
+                    }
+                    if (modifier == "body") {
+                        return Atom(true, body_text(found.message));
+                    }
+                    return Atom(true, text_of(found.message));
+                }
+                if (full == "author") {
+                    return Atom(true, GIT_gitwrite.ident_text(found.author) + " " + found.author.when.to_str() + " " + found.author.zone);
+                }
+                if (full == "committer") {
+                    return Atom(true, GIT_gitwrite.ident_text(found.committer) + " " + found.committer.when.to_str() + " " + found.committer.zone);
+                }
+                if (full.starts_with("author")) {
+                    return Atom(true, ident_part(found.author, full.substr(6, full.size()), modifier));
+                }
+                return Atom(true, ident_part(found.committer, full.substr(9, full.size()), modifier));
+            }
+            case None: {
+                return Atom(true, "");
+            }
+        }
+    }
+    if (full == "tag") {
+        if (info.tag.is_some()) {
+            return Atom(true, text_of(info.tag.or(GIT_object.Tag("", "", [], [], [], Option<GIT_object.Ident>.None)).name));
+        }
+        return Atom(true, "");
+    }
+    if (full.starts_with("tagger")) {
+        match (info.tag) {
+            case Some(GIT_object.Tag tag): {
+                match (tag.tagger) {
+                    case Some(GIT_object.Ident who): {
+                        return Atom(true, ident_part(who, full.substr(6, full.size()), modifier));
+                    }
+                    case None: {
+                        return Atom(true, "");
+                    }
+                }
+            }
+            case None: {
+                return Atom(true, "");
+            }
+        }
+    }
+    if (full == "creatordate" || full == "creator") {
+        match (info.tag) {
+            case Some(GIT_object.Tag tag): {
+                match (tag.tagger) {
+                    case Some(GIT_object.Ident who): {
+                        return Atom(true, ident_part(who, "date", modifier));
+                    }
+                    case None: {
+                    }
+                }
+            }
+            case None: {
+            }
+        }
+        match (info.commit) {
+            case Some(GIT_object.Commit found): {
+                return Atom(true, ident_part(found.committer, "date", modifier));
+            }
+            case None: {
+                return Atom(true, "");
+            }
+        }
+    }
+    return Atom(false, "");
+}
+
+/// The format with its `%(atoms)` replaced; "" and `ok` false after a message
+/// for an atom that does not exist.
+type Rendered {
+    bool is_ok;
+    str text;
+}
+
+Rendered render(GIT_gitcommon.Ctx context, Info info, str format) {
+    str out = "";
+    int index = 0;
+    while (index < format.size()) {
+        str letter = format.substr(index, index + 1);
+        if (letter == "%") {
+            if (format.substr(index, index + 2) == "%%") {
+                out = out + "%";
+                index = index + 2;
+                continue;
+            }
+            if (format.substr(index, index + 2) == "%(") {
+                int found = -1;
+                for (int j in index .. format.size()) {
+                    if (format.byte_at(j) == ')') {
+                        found = j;
+                        break;
+                    }
+                }
+                if (found < 0) {
+                    io.eprint("fatal: malformed format string " + format.substr(index, format.size()));
+                    return Rendered(false, "");
+                }
+                str atom = format.substr(index + 2, found);
+                Atom value = atom_value(context, info, atom);
+                if (!value.is_ok) {
+                    io.eprint("fatal: unknown field name: " + atom);
+                    return Rendered(false, "");
+                }
+                out = out + value.text;
+                index = found + 1;
+                continue;
+            }
+            // %xx: a byte in hex
+            if (index + 3 < format.size() + 1) {
+                str hex = format.substr(index + 1, index + 3);
+                int code = hex_pair(hex);
+                if (code >= 0) {
+                    out = out + char_of(code);
+                    index = index + 3;
+                    continue;
+                }
+            }
+        }
+        out = out + letter;
+        index = index + 1;
+    }
+    return Rendered(true, out);
+}
+
+int hex_digit(int code) {
+    if (code >= '0' && code <= '9') {
+        return code - '0';
+    }
+    if (code >= 'a' && code <= 'f') {
+        return code - 'a' + 10;
+    }
+    if (code >= 'A' && code <= 'F') {
+        return code - 'A' + 10;
+    }
+    return -1;
+}
+
+int hex_pair(str pair) {
+    if (pair.size() != 2) {
+        return -1;
+    }
+    int high = hex_digit(pair.byte_at(0));
+    int low = hex_digit(pair.byte_at(1));
+    if (high < 0 || low < 0) {
+        return -1;
+    }
+    return high * 16 + low;
+}
+
+bool is_ancestor(GIT_graph.Graph graph, str older, str newer) {
+    match (graph.is_ancestor(older, newer)) {
+        case Ok(bool yes): {
+            return yes;
+        }
+        case Err(_): {
+            return false;
+        }
+    }
+}
+
+str resolved(str gitdir, str name) {
+    match (GIT_refs.resolve(gitdir, name)) {
+        case Ok(str id): {
+            return id;
+        }
+        case Err(_): {
+            return "";
+        }
+    }
+}
+
+str read_text(str path) {
+    match (io.read(path)) {
+        case Ok(str body): {
+            return body;
+        }
+        case Err(_): {
+            return "";
+        }
+    }
+}
+
+str char_of(int code) {
+    bytes data = [];
+    data.push(code);
+    return data.utf8().or("");
+}
+
+pub int run_for_each_ref(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["--count=", "--sort=", "--format=", "--contains=", "--no-contains=", "--merged=?", "--no-merged=?", "--points-at=", "--include-root-refs", "--shell", "--perl", "--python", "--tcl", "--stdin", "--omit-empty", "--ignore-case"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git for-each-ref [--count=<count>] [--sort=<key>] [--format=<format>] [<pattern>...]");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.flag("shell") || opts.flag("perl") || opts.flag("python") || opts.flag("tcl") || opts.flag("stdin") || opts.flag("include-root-refs")) {
+        return refuse("for-each-ref", "this option");
+    }
+    List<str> patterns = opts.paths();
+    str format = opts.value("format", "%(objectname) %(objecttype)\t%(refname)");
+    List<GIT_refs.Ref> refs = [];
+    match (GIT_refs.all(context.gitdir)) {
+        case Ok(List<GIT_refs.Ref> found): {
+            refs = found;
+        }
+        case Err(_): {
+        }
+    }
+    GIT_graph.Graph graph = GIT_graph.open(context.gitdir);
+    List<Info> infos = [];
+    for (GIT_refs.Ref one in refs) {
+        if (patterns.size() > 0) {
+            bool is_matched = false;
+            for (str pattern in patterns) {
+                if (pattern.contains("*") || pattern.contains("?") || pattern.contains("[")) {
+                    if (GIT_gitcommon.fnmatch(pattern, one.name)) {
+                        is_matched = true;
+                    }
+                } else {
+                    str base = pattern;
+                    if (base.ends_with("/")) {
+                        base = base.substr(0, base.size() - 1);
+                    }
+                    if (one.name == base || one.name.starts_with(base + "/")) {
+                        is_matched = true;
+                    }
+                }
+            }
+            if (!is_matched) {
+                continue;
+            }
+        }
+        Info info = info_of(context, one);
+        bool is_keep = true;
+        for (str spec in opts.all("contains")) {
+            str wanted = need_commit(context, spec);
+            if (wanted == "") {
+                return 129;
+            }
+            if (info.commit_id == "" || !is_ancestor(graph, wanted, info.commit_id)) {
+                is_keep = false;
+            }
+        }
+        for (str spec in opts.all("no-contains")) {
+            str wanted = need_commit(context, spec);
+            if (wanted == "") {
+                return 129;
+            }
+            if (info.commit_id != "" && is_ancestor(graph, wanted, info.commit_id)) {
+                is_keep = false;
+            }
+        }
+        for (str spec in opts.all("merged")) {
+            str wanted = spec;
+            if (wanted == "") {
+                wanted = "HEAD";
+            }
+            str tip = need_commit(context, wanted);
+            if (tip == "") {
+                return 129;
+            }
+            if (info.commit_id == "" || !is_ancestor(graph, info.commit_id, tip)) {
+                is_keep = false;
+            }
+        }
+        for (str spec in opts.all("no-merged")) {
+            str wanted = spec;
+            if (wanted == "") {
+                wanted = "HEAD";
+            }
+            str tip = need_commit(context, wanted);
+            if (tip == "") {
+                return 129;
+            }
+            if (info.commit_id != "" && is_ancestor(graph, info.commit_id, tip)) {
+                is_keep = false;
+            }
+        }
+        for (str spec in opts.all("points-at")) {
+            str wanted = need_id(context, spec);
+            if (wanted == "") {
+                return 129;
+            }
+            if (info.id != wanted && peeled(context.gitdir, info.id) != wanted) {
+                is_keep = false;
+            }
+        }
+        if (is_keep) {
+            infos.push(info);
+        }
+    }
+    // sorting: the last --sort is the primary key, as in git
+    List<str> keys = opts.all("sort");
+    int key_at = keys.size() - 1;
+    while (key_at >= 0) {
+        str key = keys[key_at];
+        bool is_reverse = false;
+        if (key.starts_with("-")) {
+            is_reverse = true;
+            key = key.substr(1, key.size());
+        }
+        List<str> labels = [];
+        for (Info info in infos) {
+            Atom value = atom_value(context, info, key);
+            if (!value.is_ok) {
+                io.eprint("fatal: unknown field name: " + key);
+                return 128;
+            }
+            labels.push(sort_label(key, info, value.text));
+        }
+        infos = stable_sorted(infos, labels, is_reverse);
+        key_at = key_at - 1;
+    }
+    int limit = -1;
+    if (opts.has("count")) {
+        limit = opts.value("count", "").parse_int().or(-1);
+        if (limit < 0) {
+            return usage("git for-each-ref [--count=<count>] [--sort=<key>] [--format=<format>] [<pattern>...]");
+        }
+    }
+    bytes out = [];
+    int shown = 0;
+    for (Info info in infos) {
+        if (limit >= 0 && shown >= limit) {
+            break;
+        }
+        Rendered line = render(context, info, format);
+        if (!line.is_ok) {
+            return 128;
+        }
+        if (opts.flag("omit-empty") && line.text == "") {
+            continue;
+        }
+        out.extend((line.text + "\n").to_bytes());
+        shown = shown + 1;
+    }
+    GIT_gitwrite.put_bytes(out);
+    return 0;
+}
+
+/// What a sort key compares: dates by their seconds, the rest as text.
+str sort_label(str key, Info info, str text) {
+    bool is_date = key.starts_with("authordate") || key.starts_with("committerdate") || key.starts_with("creatordate") || key.starts_with("taggerdate");
+    if (!is_date) {
+        return text;
+    }
+    int when = 0;
+    match (info.commit) {
+        case Some(GIT_object.Commit commit): {
+            when = commit.committer.when;
+            if (key.starts_with("authordate")) {
+                when = commit.author.when;
+            }
+        }
+        case None: {
+        }
+    }
+    match (info.tag) {
+        case Some(GIT_object.Tag tag): {
+            match (tag.tagger) {
+                case Some(GIT_object.Ident who): {
+                    if (key.starts_with("creatordate") || key.starts_with("taggerdate")) {
+                        when = who.when;
+                    }
+                }
+                case None: {
+                }
+            }
+        }
+        case None: {
+        }
+    }
+    str digits = when.to_str();
+    while (digits.size() < 15) {
+        digits = "0" + digits;
+    }
+    return digits;
+}
+
+/// A stable insertion sort by the labels, compared by their octets.
+List<Info> stable_sorted(List<Info> infos, List<str> labels, bool is_reverse) {
+    List<int> order = [];
+    for (int index in 0 .. infos.size()) {
+        int offset = order.size();
+        while (offset > 0) {
+            int previous = order[offset - 1];
+            int code = compare_text(labels[previous], labels[index]);
+            if (is_reverse) {
+                code = 0 - code;
+            }
+            if (code > 0) {
+                offset = offset - 1;
+            } else {
+                break;
+            }
+        }
+        order.insert(offset, index);
+    }
+    List<Info> out = [];
+    for (int index in order) {
+        out.push(infos[index]);
+    }
+    return out;
+}
+
+int compare_text(str left, str right) {
+    int shared = left.size();
+    if (right.size() < shared) {
+        shared = right.size();
+    }
+    for (int i in 0 .. shared) {
+        int x = left.byte_at(i);
+        int y = right.byte_at(i);
+        if (x != y) {
+            return x - y;
+        }
+    }
+    return left.size() - right.size();
+}
+
+// --- hash-object ------------------------------------------------------------------------
+
+pub int run_hash_object(str start, List<str> overrides, List<str> argv) {
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-t=", "-w", "--stdin", "--stdin-paths", "--path=", "--no-filters", "--literally"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git hash-object [-t <type>] [-w] [--path=<file> | --no-filters] [--stdin [--literally]] [--] <file>...");
+    if (bad >= 0) {
+        return bad;
+    }
+    str kind = opts.value("t", "blob");
+    if (kind != "blob" && kind != "tree" && kind != "commit" && kind != "tag") {
+        return GIT_gitcommon.fatal("invalid object type \"" + kind + "\"");
+    }
+    str gitdir = GIT_repository.find(start);
+    if (opts.flag("w") && gitdir == "") {
+        return GIT_gitcommon.fatal("not a git repository (or any of the parent directories): .git");
+    }
+    List<bytes> inputs = [];
+    List<str> names = opts.paths();
+    if (opts.flag("stdin-paths")) {
+        match (io.stdin().read_all()) {
+            case Ok(bytes data): {
+                for (str line in text_of(data).split("\n")) {
+                    if (line != "") {
+                        names.push(line);
+                    }
+                }
+            }
+            case Err(_): {
+            }
+        }
+    }
+    if (opts.flag("stdin")) {
+        match (io.stdin().read_all()) {
+            case Ok(bytes data): {
+                inputs.push(data);
+            }
+            case Err(_): {
+                return 128;
+            }
+        }
+    }
+    for (str name in names) {
+        str full = name;
+        if (!name.starts_with("/")) {
+            full = fs.join(start, name);
+        }
+        match (io.read_bytes(full)) {
+            case Ok(bytes data): {
+                inputs.push(data);
+            }
+            case Err(_): {
+                return GIT_gitcommon.fatal("Cannot open '" + name + "': No such file or directory");
+            }
+        }
+    }
+    if (inputs.size() == 0) {
+        return usage("git hash-object [-t <type>] [-w] [--path=<file> | --no-filters] [--stdin [--literally]] [--] <file>...");
+    }
+    for (bytes data in inputs) {
+        if (!opts.flag("literally")) {
+            str head = text_of(data);
+            if ((kind == "commit" && !head.starts_with("tree ")) || (kind == "tag" && !head.starts_with("object "))) {
+                io.eprint("error: bogus " + kind + " object");
+                io.eprint("fatal: corrupt " + kind);
+                return 128;
+            }
+        }
+        str id = GIT_object.object_id(gitdir, kind, data);
+        if (opts.flag("w")) {
+            match (GIT_object.write(gitdir, kind, data)) {
+                case Ok(str written): {
+                    id = written;
+                }
+                case Err(_): {
+                    return GIT_gitcommon.fatal("unable to write object");
+                }
+            }
+        }
+        GIT_gitwrite.say(id);
+    }
+    return 0;
+}
+
+// --- write-tree -------------------------------------------------------------------------
+
+pub int run_write_tree(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["--missing-ok", "--prefix="]);
+    int bad = GIT_gitwrite.check_opts(opts, "git write-tree [--missing-ok] [--prefix=<prefix>/]");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.has("prefix")) {
+        return refuse("write-tree", "--prefix");
+    }
+    GIT_gitwrite.IdxLoaded loaded = GIT_gitwrite.read_idx(context.gitdir);
+    if (!loaded.ok) {
+        return 128;
+    }
+    if (loaded.idx.conflicts.size() > 0) {
+        for (str path in loaded.idx.conflicted_paths()) {
+            io.eprint(path + ": unmerged (" + "" + ")");
+        }
+        io.eprint("fatal: git-write-tree: error building trees");
+        return 128;
+    }
+    str id = GIT_gitwrite.build_tree(context.gitdir, GIT_gitwrite.idx_flat(loaded.idx));
+    if (id == "") {
+        return GIT_gitcommon.fatal("git-write-tree: error building trees");
+    }
+    GIT_gitwrite.say(id);
+    return 0;
+}
+
+// --- commit-tree ------------------------------------------------------------------------
+
+pub int run_commit_tree(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-p=", "-m=", "-F=", "-S=?", "--no-gpg-sign"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git commit-tree <tree> [(-p <parent>)...]");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.has("S")) {
+        return refuse("commit-tree", "-S (signing)");
+    }
+    List<str> words = opts.paths();
+    if (words.size() != 1) {
+        return usage("git commit-tree <tree> [(-p <parent>)...]");
+    }
+    str tree = need_id(context, words[0]);
+    if (tree == "") {
+        return 128;
+    }
+    match (GIT_object.read(context.gitdir, tree)) {
+        case Ok(GIT_object.Object object): {
+            if (object.kind() != "tree") {
+                return GIT_gitcommon.fatal(words[0] + " is not a valid 'tree' object");
+            }
+        }
+        case Err(_): {
+            return GIT_gitcommon.fatal("Not a valid object name " + words[0]);
+        }
+    }
+    List<str> parents = [];
+    for (str spec in opts.all("p")) {
+        str parent = need_commit(context, spec);
+        if (parent == "") {
+            return 128;
+        }
+        if (!parents.contains(parent)) {
+            parents.push(parent);
+        }
+    }
+    bytes message = [];
+    if (opts.has("m") || opts.has("F")) {
+        bool is_first = true;
+        for (str one in opts.all("m")) {
+            if (!is_first) {
+                message.extend("\n".to_bytes());
+            }
+            message.extend((one + "\n").to_bytes());
+            is_first = false;
+        }
+        for (str path in opts.all("F")) {
+            bytes data = [];
+            if (path == "-") {
+                match (io.stdin().read_all()) {
+                    case Ok(bytes got): {
+                        data = got;
+                    }
+                    case Err(_): {
+                    }
+                }
+            } else {
+                match (io.read_bytes(fs.join(start, path))) {
+                    case Ok(bytes got): {
+                        data = got;
+                    }
+                    case Err(_): {
+                        return GIT_gitcommon.fatal("could not read log file '" + path + "'");
+                    }
+                }
+            }
+            if (!is_first) {
+                message.extend("\n".to_bytes());
+            }
+            message.extend(data);
+            is_first = false;
+        }
+    } else {
+        match (io.stdin().read_all()) {
+            case Ok(bytes data): {
+                message = data;
+            }
+            case Err(_): {
+            }
+        }
+    }
+    GIT_object.Ident author = GIT_gitwrite.ident_for(context.gitdir, "AUTHOR", GIT_gitwrite.no_date());
+    GIT_object.Ident committer = GIT_gitwrite.ident_for(context.gitdir, "COMMITTER", GIT_gitwrite.no_date());
+    GIT_object.Commit commit = GIT_object.Commit(tree, parents, author, committer, [], message);
+    match (GIT_object.write_commit(context.gitdir, commit)) {
+        case Ok(str id): {
+            GIT_gitwrite.say(id);
+            return 0;
+        }
+        case Err(_): {
+            return GIT_gitcommon.fatal("failed to write the commit object");
+        }
+    }
+}
+
+// --- ls-files ---------------------------------------------------------------------------
+
+pub int run_ls_files(str start, List<str> overrides, List<str> argv) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-c --cached", "-d --deleted", "-m --modified", "-o --others", "-i --ignored", "-s --stage", "-u --unmerged", "-k --killed", "-z", "-t", "-v", "-f", "--directory", "--no-empty-directory", "--eol", "--full-name", "--error-unmatch", "--exclude-standard", "-x --exclude=", "-X --exclude-from=", "--exclude-per-directory=", "--abbrev=?", "--debug", "--deduplicate", "--sparse", "--format=", "--recurse-submodules", "--with-tree="]);
+    int bad = GIT_gitwrite.check_opts(opts, "git ls-files [<options>] [<file>...]");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.flag("killed") || opts.has("exclude") || opts.has("exclude-from") || opts.has("exclude-per-directory") || opts.flag("directory") || opts.flag("eol") || opts.flag("debug") || opts.has("format") || opts.flag("recurse-submodules") || opts.has("with-tree") || opts.flag("t") || opts.flag("v") || opts.flag("f")) {
+        return refuse("ls-files", "this option");
+    }
+    bool is_others = opts.flag("others");
+    bool is_cached = opts.flag("cached");
+    bool is_deleted = opts.flag("deleted");
+    bool is_modified = opts.flag("modified");
+    bool is_stage = opts.flag("stage");
+    bool is_unmerged = opts.flag("unmerged");
+    bool is_ignored = opts.flag("ignored");
+    if (!is_others && !is_deleted && !is_modified && !is_unmerged && !is_ignored && !is_stage) {
+        is_cached = true;
+    }
+    if (is_ignored && !is_others && !is_cached) {
+        is_cached = true;
+    }
+    if (is_ignored && !is_others && !is_cached) {
+        io.eprint("fatal: ls-files -i must be used with either -o or -c");
+        return 128;
+    }
+    str end = "\n";
+    if (opts.flag("z")) {
+        end = "\x00";
+    }
+    List<GIT_gitcommon.Spec> specs = GIT_gitcommon.parse_specs(opts.paths(), context.prefix);
+    if (specs.size() == 0 && context.prefix != "") {
+        specs = GIT_gitcommon.parse_specs([context.prefix], "");
+    }
+    bool is_full = opts.flag("full-name");
+    bytes out = [];
+    List<str> matched = [];
+    bool is_filemode = GIT_gitcommon.cfg_bool(context, "core", "", "filemode", true);
+    List<GIT_index.Entry> entries = [];
+    match (GIT_index.read(context.gitdir)) {
+        case Ok(GIT_index.Index index): {
+            entries = index.entries;
+        }
+        case Err(_): {
+        }
+    }
+    List<str> tracked = [];
+    for (GIT_index.Entry entry in entries) {
+        tracked.push(GIT_gitwrite.entry_path(entry));
+    }
+    // one walk of the index, as git does: what is cached (or staged), then
+    // whether the entry is deleted or modified
+    if (is_unmerged) {
+        is_stage = true;
+    }
+    for (GIT_index.Entry entry in entries) {
+        str path = GIT_gitwrite.entry_path(entry);
+        if (specs.size() > 0 && !GIT_gitcommon.spec_match(specs, path)) {
+            continue;
+        }
+        if (is_unmerged && entry.stage == 0) {
+            continue;
+        }
+        List<int> hits = [];
+        if ((is_cached || is_stage) && !is_ignored) {
+            hits.push(1);
+        }
+        if (is_deleted || is_modified) {
+            str full = fs.join(context.root, path);
+            int kind = GIT_gitwrite.kind_of(full);
+            if (is_deleted && kind == 0) {
+                hits.push(2);
+            }
+            if (is_modified && (kind == 0 || (entry.stage == 0 && !GIT_gitwrite.worktree_matches(full, entry, is_filemode)))) {
+                hits.push(3);
+            }
+        }
+        for (int hit in hits) {
+            str shown_path = path;
+            if (!is_full && context.prefix != "" && path.starts_with(context.prefix + "/")) {
+                shown_path = path.substr(context.prefix.size() + 1, path.size());
+            }
+            str name = shown_path;
+            if (!opts.flag("z")) {
+                name = GIT_gitcommon.quote_path(shown_path);
+            }
+            if (is_stage) {
+                out.extend((octal6(entry.mode) + " " + entry.id + " " + entry.stage.to_str() + "\t" + name + end).to_bytes());
+            } else {
+                out.extend((name + end).to_bytes());
+            }
+        }
+    }
+    if (is_others) {
+        bool is_use_ignore = opts.flag("exclude-standard");
+        match (GIT_ignore.load(context.gitdir, context.root)) {
+            case Ok(GIT_ignore.Ignore ignore): {
+                List<str> files = [];
+                walk_files(context.root, "", files);
+                files.sort();
+                for (str path in files) {
+                    if (tracked.contains(path)) {
+                        continue;
+                    }
+                    if (specs.size() > 0 && !GIT_gitcommon.spec_match(specs, path)) {
+                        continue;
+                    }
+                    bool is_skipped = is_use_ignore && ignore.is_ignored(path);
+                    bool is_hit = ignore.is_ignored(path);
+                    if (is_ignored) {
+                        if (!is_use_ignore || !is_hit) {
+                            continue;
+                        }
+                    } else if (is_skipped) {
+                        continue;
+                    }
+                    str shown_path = path;
+                    if (!is_full && context.prefix != "" && path.starts_with(context.prefix + "/")) {
+                        shown_path = path.substr(context.prefix.size() + 1, path.size());
+                    }
+                    str name = shown_path;
+                    if (!opts.flag("z")) {
+                        name = GIT_gitcommon.quote_path(shown_path);
+                    }
+                    out.extend((name + end).to_bytes());
+                }
+            }
+            case Err(_): {
+                return 128;
+            }
+        }
+    }
+    GIT_gitwrite.put_bytes(out);
+    if (opts.flag("error-unmatch")) {
+        for (str spec in opts.paths()) {
+            bool is_found = false;
+            List<GIT_gitcommon.Spec> one = GIT_gitcommon.parse_specs([spec], context.prefix);
+            for (str path in tracked) {
+                if (GIT_gitcommon.spec_match(one, path)) {
+                    is_found = true;
+                }
+            }
+            if (!is_found) {
+                io.eprint("error: pathspec '" + spec + "' did not match any file(s) known to git");
+                io.eprint("Did you forget to 'git add'?");
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+str octal6(int mode) {
+    str text = "";
+    int digit_index = 5;
+    while (digit_index >= 0) {
+        text = text + (mode >> digit_index * 3 & 7).to_str();
+        digit_index = digit_index - 1;
+    }
+    return text;
+}
+
+/// Every file below `root/dir`, as repository-relative paths; `.git` is skipped.
+void walk_files(str root, str directory, List<str> out) {
+    str here = root;
+    if (directory != "") {
+        here = fs.join(root, directory);
+    }
+    match (fs.listdir(here)) {
+        case Ok(List<str> names): {
+            for (str name in names) {
+                if (name == ".git") {
+                    continue;
+                }
+                str relative = name;
+                if (directory != "") {
+                    relative = directory + "/" + name;
+                }
+                str full = fs.join(root, relative);
+                int kind = GIT_gitwrite.kind_of(full);
+                if (kind == 3) {
+                    if (fs.is_present(fs.join(full, ".git"))) {
+                        continue;
+                    }
+                    walk_files(root, relative, out);
+                } else if (kind != 0) {
+                    out.push(relative);
+                }
+            }
+        }
+        case Err(_): {
+        }
+    }
+}
+
+// --- check-ref-format -------------------------------------------------------------------
+
+pub int run_check_ref_format(str start, List<str> overrides, List<str> argv) {
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["--allow-onelevel", "--refspec-pattern", "--normalize", "--branch"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git check-ref-format [--normalize] [<options>] <refname>");
+    if (bad >= 0) {
+        return bad;
+    }
+    List<str> words = opts.paths();
+    if (words.size() != 1) {
+        return usage("git check-ref-format [--normalize] [<options>] <refname>");
+    }
+    str name = words[0];
+    if (opts.flag("branch")) {
+        str full = "refs/heads/" + name;
+        if (name == "HEAD" || name.starts_with("-") || !is_ref_ok(full, false, false)) {
+            return 128;
+        }
+        // `@{-1}` style names are expanded by git; a plain name is printed
+        GIT_gitwrite.say(name);
+        return 0;
+    }
+    if (opts.flag("normalize")) {
+        str collapsed = name;
+        while (collapsed.starts_with("/")) {
+            collapsed = collapsed.substr(1, collapsed.size());
+        }
+        while (collapsed.contains("//")) {
+            match (collapsed.index_of("//")) {
+                case Some(int offset): {
+                    collapsed = collapsed.substr(0, offset) + collapsed.substr(offset + 1, collapsed.size());
+                }
+                case None: {
+                }
+            }
+        }
+        name = collapsed;
+    }
+    if (!is_ref_ok(name, opts.flag("allow-onelevel"), opts.flag("refspec-pattern"))) {
+        return 1;
+    }
+    if (opts.flag("normalize")) {
+        GIT_gitwrite.say(name);
+    }
+    return 0;
+}
+
+/// git's `check_refname_format`.
+bool is_ref_ok(str name, bool is_allow_onelevel, bool is_allow_pattern) {
+    if (name == "" || name == "@") {
+        return false;
+    }
+    if (name.starts_with("/") || name.ends_with("/") || name.ends_with(".") || name.contains("..") || name.contains("@{") || name.contains("//")) {
+        return false;
+    }
+    int stars = 0;
+    for (int i in 0 .. name.size()) {
+        int code = name.byte_at(i);
+        if (code < 32 || code == 127 || code == ' ' || code == '~' || code == '^' || code == ':' || code == '?' || code == '[' || code == '\\') {
+            return false;
+        }
+        if (code == '*') {
+            stars = stars + 1;
+        }
+    }
+    if (stars > 1 || (stars == 1 && !is_allow_pattern)) {
+        return false;
+    }
+    List<str> parts = name.split("/");
+    for (str part in parts) {
+        if (part == "" || part.starts_with(".") || part.ends_with(".lock")) {
+            return false;
+        }
+    }
+    if (parts.size() < 2 && !is_allow_onelevel) {
+        return false;
+    }
+    return true;
+}
