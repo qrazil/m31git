@@ -264,6 +264,22 @@ void PickMenu.apply(str cmd) {
     if (cmd == GIT_ui_core.CMD_CLOSE) {
         return;
     }
+    if (cmd == GIT_ui_core.CMD_PICK_MARKED) {
+        List<str> specs = [];
+        for (int index in 0 .. host.log.size()) {
+            str id = host.log[host.log.size() - 1 - index].id;
+            if (host.marked.contains(id)) {
+                specs.push(id);
+            }
+        }
+        if (specs.size() == 0) {
+            host.say(verb.noun() + ": no commit is marked (. marks the one under the cursor)");
+            return;
+        }
+        host.marked = [];
+        run(host, verb, specs, options(host, false, false, 0, false, false), verb.noun() + " " + specs.size().to_str() + " marked commits");
+        return;
+    }
     if (target == "") {
         host.say(verb.noun() + ": put the cursor on a commit (or r for a range)");
         return;

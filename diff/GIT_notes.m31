@@ -1,0 +1,155 @@
+// `git notes` for mgit: the notes of the default ref (`refs/notes/commits`, or
+// `core.notesRef`), read and written in git's format. A note is a blob in a tree whose
+// paths are the annotated commit's id (`ab/cdef...` once a tree has many notes: git reads
+// both and this reads both). A write makes a new notes commit on the ref, the way
+// `git notes add | edit | remove` do, with git's messages. The tree is written flat.
+
+import core.GIT_config;
+import core.GIT_object;
+import core.GIT_pathtree;
+import core.GIT_refs;
+import diff.GIT_merge;
+import core.GIT_reflog;
+
+pub str notes_ref(str gitdir) {
+    Option<str> configured = GIT_config.get(gitdir, "core", "", "notesRef");
+    if (configured.is_some() && configured.or("") != "") {
+        return configured.or("");
+    }
+    return "refs/notes/commits";
+}
+
+/// The notes tree as annotated commit id -> blob id. Empty when there is no notes ref.
+pub Map<str, str> load(str gitdir) {
+    Map<str, str> out = {};
+    str tip = "";
+    match (GIT_refs.resolve(gitdir, notes_ref(gitdir))) {
+        case Ok(str found): {
+            tip = found;
+        }
+        case Err(_): {
+            return out;
+        }
+    }
+    match (GIT_merge.read_commit(gitdir, tip)) {
+        case Ok(GIT_object.Commit commit): {
+            match (GIT_object.flatten_tree(gitdir, commit.tree)) {
+                case Ok(Map<str, str> flat): {
+                    for (str path in flat.keys()) {
+                        str name = path.split("/").join("");
+                        out.set(name, flat.get(path).or(""));
+                    }
+                }
+                case Err(_): {
+                }
+            }
+        }
+        case Err(_): {
+        }
+    }
+    return out;
+}
+
+/// The text of `commit`'s note, or "".
+pub str note_of(str gitdir, Map<str, str> notes, str commit) {
+    match (notes.get(commit)) {
+        case Some(str blob_id): {
+            match (GIT_pathtree.blob(gitdir, blob_id)) {
+                case Ok(bytes content): {
+                    return content.utf8().or("");
+                }
+                case Err(_): {
+                }
+            }
+        }
+        case None: {
+        }
+    }
+    return "";
+}
+
+/// Set (`text` not empty) or remove (`text` empty) the note of `commit`. Returns "" or why not.
+pub str write(str gitdir, str commit, str text) {
+    Map<str, str> notes = load(gitdir);
+    if (text == "") {
+        if (!notes.contains(commit)) {
+            return "that commit has no note";
+        }
+        notes.remove(commit);
+    } else {
+        str body = text;
+        if (!body.ends_with("\n")) {
+            body = body + "\n";
+        }
+        match (GIT_object.write_blob(gitdir, body.to_bytes())) {
+            case Ok(str blob_id): {
+                notes.set(commit, blob_id);
+            }
+            case Err(GIT_object.Error error): {
+                return "write_blob: " + error.to_str();
+            }
+        }
+    }
+    List<GIT_object.Entry> entries = [];
+    List<str> names = [];
+    for (str name in notes.keys()) {
+        names.push(name);
+    }
+    names.sort();
+    for (str name in names) {
+        entries.push(GIT_object.Entry(33188, name.to_bytes(), notes.get(name).or("")));
+    }
+    str tree = "";
+    match (GIT_object.write_tree(gitdir, entries)) {
+        case Ok(str found): {
+            tree = found;
+        }
+        case Err(GIT_object.Error error): {
+            return "write_tree: " + error.to_str();
+        }
+    }
+    str ref = notes_ref(gitdir);
+    List<str> parents = [];
+    Option<str> expected = Option<str>.None;
+    match (GIT_refs.resolve(gitdir, ref)) {
+        case Ok(str previous): {
+            parents.push(previous);
+            expected = Option<str>.Some(previous);
+        }
+        case Err(_): {
+        }
+    }
+    str verb = "add";
+    if (text == "") {
+        verb = "remove";
+    } else if (parents.size() > 0 && load(gitdir).contains(commit)) {
+        verb = "edit";
+    }
+    GIT_object.Ident who = GIT_reflog.default_ident(gitdir);
+    GIT_object.Commit made = GIT_object.Commit(tree, parents, who, who, [], ("Notes " + verb_past(verb) + " by 'git notes " + verb + "'\n").to_bytes());
+    match (GIT_object.write_commit(gitdir, made)) {
+        case Ok(str id): {
+            match (GIT_refs.update(gitdir, ref, id, expected, reflog_message: "notes: Notes " + verb_past(verb) + " by 'git notes " + verb + "'")) {
+                case Ok(_): {
+                    return "";
+                }
+                case Err(GIT_refs.Error error): {
+                    return "refs.update: " + error.to_str();
+                }
+            }
+        }
+        case Err(GIT_object.Error error): {
+            return "write_commit: " + error.to_str();
+        }
+    }
+}
+
+str verb_past(str verb) {
+    if (verb == "remove") {
+        return "removed";
+    }
+    if (verb == "edit") {
+        return "added";
+    }
+    return "added";
+}

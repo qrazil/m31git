@@ -45,6 +45,7 @@
 // The `@` overlay shows the ring buffer.
 
 import fs;
+import io;
 import os;
 import core.GIT_branches;
 import core.GIT_config;
@@ -52,6 +53,7 @@ import core.GIT_env;
 import core.GIT_checkout;
 import core.GIT_log;
 import diff.GIT_merge;
+import diff.GIT_notes;
 import core.GIT_object;
 import diff.GIT_rebase;
 import core.GIT_refs;
@@ -107,6 +109,9 @@ pub const str SCOPE_PULL_ASK = "pull-ask";
 pub const str SCOPE_OVERVIEW = "overview";
 pub const str SCOPE_RESET = "reset";
 pub const str SCOPE_QUICK = "quick";
+pub const str SCOPE_NOTES = "notes";
+pub const str SCOPE_CLEAN = "clean";
+pub const str SCOPE_YANK = "yank";
 pub const str SCOPE_BISECT = "bisect";
 pub const str SCOPE_WORKTREES = "worktrees";
 pub const str SCOPE_IGNORE = "ignore";
@@ -255,6 +260,23 @@ pub const str CMD_RESET_MIXED = "reset-mixed";
 pub const str CMD_RESET_HARD = "reset-hard";
 pub const str CMD_DETACH = "detach";
 pub const str CMD_QUICK = "quick";
+pub const str CMD_TREE = "tree";
+pub const str CMD_MARK = "mark";
+pub const str CMD_PICK_MARKED = "pick-marked";
+pub const str CMD_NOTES = "notes";
+pub const str CMD_NOTE_SET = "note-set";
+pub const str CMD_NOTE_REMOVE = "note-remove";
+pub const str CMD_CLEAN = "clean";
+pub const str CMD_CLEAN_DRY = "clean-dry";
+pub const str CMD_CLEAN_FORCE = "clean-force";
+pub const str CMD_CLEAN_IGNORED = "clean-ignored";
+pub const str CMD_YANK = "yank";
+pub const str CMD_YANK_HASH = "yank-hash";
+pub const str CMD_YANK_SHORT = "yank-short";
+pub const str CMD_YANK_SUBJECT = "yank-subject";
+pub const str CMD_YANK_AUTHOR = "yank-author";
+pub const str CMD_YANK_PATH = "yank-path";
+pub const str CMD_YANK_BRANCH = "yank-branch";
 pub const str CMD_BISECT = "bisect";
 pub const str CMD_BISECT_START = "bisect-start";
 pub const str CMD_BISECT_GOOD = "bisect-good";
@@ -401,6 +423,8 @@ pub type Core {
     pub bool is_signoff = false;
     /// `v` in the Commit mode: the commit hooks are skipped (`--no-verify`).
     pub bool is_no_verify = false;
+    /// Text for the driver to put on the clipboard (OSC 52) after this key.
+    pub str pending_copy = "";
     /// Where `n` (new branch) asks for the name: a file `$EDITOR` is launched
     /// on, exactly like `commit_message_path`, since there is no text-input
     /// widget to type into -- see `new_branch`.
@@ -469,6 +493,12 @@ pub type Core {
     pub GIT_status.Status last_status = GIT_status.Status([], [], []);
     pub List<GIT_log.Entry> log = [];
     /// Which revision the log is of and how it is filtered (the `f` menu).
+    /// The note of each commit in `log` that has one (refs/notes/commits).
+    pub Map<str, str> note_texts = {};
+    /// Commits marked with `.` for a cherry-pick of several (`A`, then `m`).
+    pub List<str> marked = [];
+    /// The file sections as a tree of directories (the backtick toggle).
+    pub bool is_tree = false;
     pub GIT_ui_logfilter.Filter log_filter = GIT_ui_logfilter.Filter();
     /// The `@` ring buffer: one line per write operation, oldest first.
     pub List<str> command_log = [];
@@ -589,6 +619,15 @@ pub void Core.refresh() {
             if (log_filter.rev != "HEAD") {
                 message = "log of " + log_filter.rev + ": " + error.to_str() + " (the log is back on HEAD)";
                 log_filter.rev = "HEAD";
+            }
+        }
+    }
+    note_texts = {};
+    Map<str, str> note_ids = GIT_notes.load(gitdir);
+    if (note_ids.size() > 0) {
+        for (GIT_log.Entry entry in log) {
+            if (note_ids.contains(entry.id)) {
+                note_texts.set(entry.id, GIT_notes.note_of(gitdir, note_ids, entry.id));
             }
         }
     }
@@ -921,7 +960,7 @@ pub Map<str, str> Core.graph_for_log() {
 }
 
 pub void Core.rebuild_outline() {
-    TUI_outline.Outline whole = GIT_ui_model.build_outline(last_status, log, commit_changes_cache, collapsed, paths, file_diffs, branch_rows, stashes: stash_labels, graph: graph_for_log(), commits_note: log_filter.describe());
+    TUI_outline.Outline whole = GIT_ui_model.build_outline(last_status, log, commit_changes_cache, collapsed, paths, file_diffs, branch_rows, stashes: stash_labels, graph: graph_for_log(), commits_note: log_filter.describe(), notes: note_texts, marks: marked, is_tree: is_tree);
     List<TUI_outline.Node> roots = GIT_ui_merge_model.merge_roots(last_status, is_merging, collapsed, paths, sequence_word, sequence_left);
     for (TUI_outline.Node node in whole.roots) {
         roots.push(node);
@@ -1026,6 +1065,84 @@ pub void Core.set_editor_paths() {
 /// module-level mutable state and building 60 small values per keypress is
 /// nothing.
 pub List<Binding> key_table() {
+    List<Binding> table = base_key_table();
+    Map<str, List<str>> changed = key_overrides();
+    if (changed.size() == 0) {
+        return table;
+    }
+    List<Binding> out = [];
+    for (Binding binding in table) {
+        match (changed.get(binding.cmd)) {
+            case Some(List<str> keys): {
+                if (binding.scope == SCOPE_OUTLINE || binding.scope == SCOPE_DIFF || binding.scope == SCOPE_GLOBAL || binding.scope == SCOPE_COMMIT) {
+                    out.push(Binding(binding.scope, binding.cmd, keys, binding.help, binding.footer_keys, binding.footer_label));
+                } else {
+                    out.push(binding);
+                }
+            }
+            case None: {
+                out.push(binding);
+            }
+        }
+    }
+    return out;
+}
+
+/// Your own keys for commands, from `M31GIT_KEYS` ("stage=a;unstage=b,B") or the file
+/// `$XDG_CONFIG_HOME/m31git/keys` (`~/.config/m31git/keys`): one `command key [key...]` per
+/// line (`#` comments). The command is the id `?` and the palette show in brackets
+/// (`stage`, `quick`, `bisect`...; the list is `docs/MGIT-MODES.md`), a key is as the table
+/// writes it (`a`, `A`, `enter`, `space`, `ctrl-x`). It replaces the command's keys in the
+/// outline, diff, commit panel and global scopes; menus keep theirs.
+pub Map<str, List<str>> key_overrides() {
+    Map<str, List<str>> out = {};
+    str inline = os.env("M31GIT_KEYS").or("");
+    if (inline != "") {
+        for (str item in inline.split(";")) {
+            int equals = item.index_of("=").or(-1);
+            if (equals > 0) {
+                out.set(item.substr(0, equals).trim(), item.substr(equals + 1, item.size()).split(","));
+            }
+        }
+    }
+    str path = "";
+    str xdg = os.env("XDG_CONFIG_HOME").or("");
+    str home = os.env("HOME").or("");
+    if (xdg.starts_with("/")) {
+        path = fs.join(fs.join(xdg, "m31git"), "keys");
+    } else if (home != "") {
+        path = fs.join(fs.join(fs.join(home, ".config"), "m31git"), "keys");
+    }
+    if (path != "" && fs.is_file(path)) {
+        match (io.read(path)) {
+            case Ok(str body): {
+                for (str line in body.split("\n")) {
+                    if (line.trim() == "" || line.starts_with("#")) {
+                        continue;
+                    }
+                    List<str> words = [];
+                    for (str word in line.split(" ")) {
+                        if (word != "") {
+                            words.push(word);
+                        }
+                    }
+                    if (words.size() >= 2) {
+                        List<str> keys = [];
+                        for (int index in 1 .. words.size()) {
+                            keys.push(words[index]);
+                        }
+                        out.set(words[0], keys);
+                    }
+                }
+            }
+            case Err: {
+            }
+        }
+    }
+    return out;
+}
+
+List<Binding> base_key_table() {
     List<Binding> table = [];
     // The document: the outline.
     table.push(Binding(SCOPE_OUTLINE, CMD_DOWN, ["j", "down"], "move the cursor down (steps the jump list when it has focus)", "", ""));
@@ -1068,6 +1185,11 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_OUTLINE, CMD_CUSTOM, [";"], "the custom commands: shell commands bound to keys in .mgit-commands, .git/mgit-commands or ~/.config/m31git/commands, with {file}, {commit}, {branch} filled from the cursor", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_WORKTREES, ["W"], "the work trees: add, remove, prune, and where each is", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_BISECT, ["t"], "bisect: find the commit that broke something (start, good, bad, skip, reset)", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_YANK, ["y"], "copy to the clipboard (OSC 52): the commit's hash, short hash, subject or author, the file's path, the branch's name", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_CLEAN, ["K"], "clean: remove the untracked files (a dry run first, or for good after typing y; the ignored ones too on request)", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_NOTES, ["O"], "the note of the commit under the cursor (git notes): add, edit, remove; shown under the commit's date", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_MARK, ["."], "mark or unmark the commit under the cursor (+); A then m cherry-picks every marked commit, oldest first", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_TREE, ["`"], "the changed files as a flat list or a tree of directories", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_JUMP, ["J"], "show or hide the jump list", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_FOCUS, ["w"], "give the jump list the keys, or take them back", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_SEARCH, ["/"], "search the outline and the log (smart-case: lower case ignores case)", "", ""));
@@ -1180,6 +1302,20 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_BISECT, CMD_BISECT_RESET, ["r"], "reset: end the bisect and go back to the branch you started on", "r", "reset"));
     table.push(Binding(SCOPE_BISECT, CMD_BISECT_LOG, ["l"], "the log of the bisect so far (what git bisect log prints)", "l", "log"));
     table.push(Binding(SCOPE_BISECT, CMD_CLOSE, ["escape"], "close", "esc", "close"));
+    table.push(Binding(SCOPE_YANK, CMD_YANK_HASH, ["h"], "the commit's full hash", "h", "hash"));
+    table.push(Binding(SCOPE_YANK, CMD_YANK_SHORT, ["s"], "the commit's short hash", "s", "short hash"));
+    table.push(Binding(SCOPE_YANK, CMD_YANK_SUBJECT, ["m"], "the commit's subject line", "m", "subject"));
+    table.push(Binding(SCOPE_YANK, CMD_YANK_AUTHOR, ["a"], "the commit's author (Name <email>)", "a", "author"));
+    table.push(Binding(SCOPE_YANK, CMD_YANK_PATH, ["f"], "the path of the file under the cursor", "f", "file path"));
+    table.push(Binding(SCOPE_YANK, CMD_YANK_BRANCH, ["b"], "the name of the branch under the cursor, else the current one", "b", "branch"));
+    table.push(Binding(SCOPE_YANK, CMD_CLOSE, ["escape"], "close", "esc", "close"));
+    table.push(Binding(SCOPE_CLEAN, CMD_CLEAN_DRY, ["n"], "dry run: list what git clean -d would remove, remove nothing", "n", "dry run"));
+    table.push(Binding(SCOPE_CLEAN, CMD_CLEAN_FORCE, ["f"], "remove the untracked files and directories (asks: type y)", "f", "remove"));
+    table.push(Binding(SCOPE_CLEAN, CMD_CLEAN_IGNORED, ["x"], "remove the untracked and the ignored files (asks: type y)", "x", "+ ignored"));
+    table.push(Binding(SCOPE_CLEAN, CMD_CLOSE, ["escape"], "close", "esc", "close"));
+    table.push(Binding(SCOPE_NOTES, CMD_NOTE_SET, ["a"], "add or edit the note: one line you type (the old one is offered)", "a", "add / edit"));
+    table.push(Binding(SCOPE_NOTES, CMD_NOTE_REMOVE, ["d"], "remove the note (asks: type y)", "d", "remove"));
+    table.push(Binding(SCOPE_NOTES, CMD_CLOSE, ["escape"], "close", "esc", "close"));
     table.push(Binding(SCOPE_REFLOG, CMD_DOWN, ["j", "down"], "next entry", "j/k", "move"));
     table.push(Binding(SCOPE_REFLOG, CMD_UP, ["k", "up"], "previous entry", "", ""));
     table.push(Binding(SCOPE_REFLOG, CMD_REFLOG_RESET, ["enter", "G"], "reset the branch to the entry (soft, mixed, hard)", "enter", "reset"));
@@ -1269,6 +1405,7 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_PICK, CMD_PICK_ORIGIN, ["x"], "cherry-pick -x: add a '(cherry picked from commit ...)' line", "x", "-x"));
     table.push(Binding(SCOPE_PICK, CMD_PICK_NO_COMMIT, ["n"], "cherry-pick -n: apply to the index and files, do not commit", "n", "-n"));
     table.push(Binding(SCOPE_PICK, CMD_PICK_KEEP, ["k"], "cherry-pick keeping a commit that comes out empty (--keep-redundant-commits)", "", ""));
+    table.push(Binding(SCOPE_PICK, CMD_PICK_MARKED, ["m"], "cherry-pick every commit marked with . (oldest first), then clear the marks", "m", "marked"));
     table.push(Binding(SCOPE_PICK, CMD_PICK_RANGE, ["r"], "cherry-pick what you type: A..B or commits, oldest first", "r", "range"));
     table.push(Binding(SCOPE_PICK, CMD_PICK_RANGE_ORIGIN, ["R"], "the same, with -x", "", ""));
     table.push(Binding(SCOPE_PICK, CMD_PICK_PARENT_1, ["1"], "cherry-pick a merge commit against its first parent (-m 1)", "", ""));
@@ -1534,6 +1671,15 @@ pub str scope_title(str scope) {
     if (scope == SCOPE_BISECT) {
         return "bisect menu (History, t)";
     }
+    if (scope == SCOPE_YANK) {
+        return "copy menu (y)";
+    }
+    if (scope == SCOPE_CLEAN) {
+        return "clean menu (Status, K)";
+    }
+    if (scope == SCOPE_NOTES) {
+        return "notes menu (History, O)";
+    }
     if (scope == SCOPE_QUICK) {
         return "commit edit menu (History, E)";
     }
@@ -1545,7 +1691,7 @@ pub str scope_title(str scope) {
 
 /// Every scope, in the order the help overlay lists them.
 pub List<str> all_scopes() {
-    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET, SCOPE_QUICK, SCOPE_REFLOG, SCOPE_LOGMENU, SCOPE_REMOTES, SCOPE_IGNORE, SCOPE_WORKTREES, SCOPE_BISECT];
+    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET, SCOPE_QUICK, SCOPE_REFLOG, SCOPE_LOGMENU, SCOPE_REMOTES, SCOPE_IGNORE, SCOPE_WORKTREES, SCOPE_BISECT, SCOPE_YANK, SCOPE_CLEAN, SCOPE_NOTES];
 }
 
 // --- the overlay stack and the command log -------------------------------------

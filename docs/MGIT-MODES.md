@@ -67,6 +67,8 @@ while a merge, cherry-pick or rebase has conflicts.
 | `s` / `u` | stage / unstage the file under the cursor |
 | `S` / `U` | stage everything / unstage everything |
 | `x` | discard the file's changes (asks first, naming the path) |
+| `K` | clean: `n` dry run, `f` remove untracked files, `x` also the ignored ones (asks) |
+| the backtick | the changed files as a tree of directories or a flat list |
 | `I` | ignore the untracked file: `g` path, `e` extension, `d` directory (.gitignore), `x` .git/info/exclude |
 | `d` or `Enter` on a file | open its hunk diff |
 | `c` | go to the Commit mode |
@@ -151,6 +153,7 @@ changed); `Enter` on one of its files opens that commit's diff of the file.
 | `E` | edit the commit: a menu of `r` reword, `e` edit, `d` drop (asks), `s` squash down, `f` fixup down, `k`/`j` move up/down, `a` amend with the staged changes, `F` new `fixup!` commit (a rebase -i underneath; `r` continues/aborts) |
 | `f` | the log menu: `a` author, `g` message, `s` -S, `p` path, `r` another revision, `G` graph column, `c` clear, `d` diff two refs, `D` the commit against HEAD |
 | `t` | bisect: `s` start (bad, then good), `g` good, `b` bad, `k` skip, `r` reset, `l` log |
+| `O` | the commit's note: `a` add or edit, `d` remove; `.` marks the commit, then `A` and `m` cherry-picks the marked ones |
 | `L` | the reflog of HEAD as a list: Enter reset menu, `o` detached checkout, `A` cherry-pick |
 | `B` / `H` | blame / history of a commit's file |
 | the movement, fold and search keys of Status | |
@@ -251,6 +254,17 @@ A flow is a state, not a mode. While one is under way:
   went. A merge in progress still allows committing: that is how it finishes;
 * the conflict list, the resolution view and the rebase todo editor are the
   overlays they always were, with their own keys.
+
+## Copying, and your own keys
+
+`y` (any mode) copies to the clipboard with OSC 52: `h` the commit's hash, `s` the short hash, `m` the subject, `a` the
+author, `f` the file's path, `b` the branch name. `M31GIT_COPY=off` turns it off.
+
+Your own keys: `M31GIT_KEYS="stage=a;unstage=A"` or the file `$XDG_CONFIG_HOME/m31git/keys` (`~/.config/m31git/keys`),
+one `command key [key...]` per line, `#` for comments. The command is the id in the key table (`stage`, `unstage`,
+`diff`, `commit`, `quick`, `reflog`, `logmenu`, `remotes`, `worktrees`, `bisect`, `yank`, `clean`, `notes`, `mark`,
+`tree`, `custom`, `ignore`, `noverify`...); a key is written as the table writes it (`a`, `A`, `enter`, `space`,
+`ctrl-x`). It replaces that command's keys in the outline, diff, commit panel and global scopes. Menu keys stay.
 
 ## Custom commands
 

@@ -1,0 +1,74 @@
+// `K` in Status: remove untracked files (`git clean`), by the library's own `clean` on the
+// terminal, so git's rules and its list of what went are shown.
+//   n what would be removed (git clean -n -d), nothing is touched
+//   f remove the untracked files and directories (-f -d), after you type y
+//   x the same and the ignored files too (-f -d -x), after you type y
+// Destructive: both removals say how many untracked paths are in the way first.
+
+import ui.GIT_ui_core;
+import ui.GIT_ui_prompt;
+import ui.GIT_ui_sequencer;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+import tui.widgets.TUI_menu;
+
+type CleanMenu {
+    GIT_ui_core.Core host;
+    str pending = "";
+}
+
+pub TUI_app.Action CleanMenu.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_CLEAN, code)) {
+        case Some(str cmd): {
+            host.pop_overlay();
+            int untracked = host.last_status.untracked.size();
+            if (cmd == GIT_ui_core.CMD_CLEAN_DRY) {
+                host.request_net("clean", ["-n", "-d"]);
+            }
+            if (cmd == GIT_ui_core.CMD_CLEAN_FORCE) {
+                pending = "force";
+                GIT_ui_prompt.open(host, this, "confirm", "DELETE " + untracked.to_str() + " untracked path(s) for good? type y");
+            }
+            if (cmd == GIT_ui_core.CMD_CLEAN_IGNORED) {
+                pending = "ignored";
+                GIT_ui_prompt.open(host, this, "confirm", "DELETE the untracked AND ignored files for good? type y");
+            }
+            if (host.is_editor_wanted && host.net_verb != "") {
+                return TUI_app.Action.Quit;
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+/// The prompt's answer (`GIT_ui_prompt.Receiver`).
+pub void CleanMenu.received(str purpose, str text) {
+    if (text.trim() != "y") {
+        host.say("clean: nothing was removed");
+        return;
+    }
+    if (pending == "force") {
+        host.request_net("clean", ["-f", "-d"]);
+    }
+    if (pending == "ignored") {
+        host.request_net("clean", ["-f", "-d", "-x"]);
+    }
+}
+
+pub void CleanMenu.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("clean", GIT_ui_sequencer.items_of(GIT_ui_core.SCOPE_CLEAN));
+    which_key.render(buffer, area);
+}
+
+pub List<GIT_ui_core.Hint> CleanMenu.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_CLEAN);
+}
+
+pub void open(GIT_ui_core.Core core) {
+    core.push_overlay(CleanMenu(core));
+}

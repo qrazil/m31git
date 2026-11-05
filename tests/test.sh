@@ -475,6 +475,7 @@ source tests/test_rebase.sh
 source tests/test_log.sh
 source tests/test_remotes.sh
 source tests/test_tools.sh
+source tests/test_misc.sh
 
 # `test_ssh.sh` runs a disposable sshd (throwaway keys, ephemeral port, a
 # throwaway $HOME; the real ~/.ssh is never touched) and kills it by PID. It

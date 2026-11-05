@@ -1,0 +1,83 @@
+// `O` in History: the note of the commit under the cursor (`git notes`, ref `refs/notes/commits`
+// or `core.notesRef`). `a` adds or edits it (one line you type; the old text is offered),
+// `d` removes it after you type y. Notes show under the commit's date. The change is a new
+// commit on the notes ref, as `git notes add | edit | remove` makes (`diff/GIT_notes.m31`).
+
+import diff.GIT_notes;
+import ui.GIT_ui_core;
+import ui.GIT_ui_prompt;
+import ui.GIT_ui_sequencer;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+import tui.widgets.TUI_menu;
+
+type NotesMenu {
+    GIT_ui_core.Core host;
+    str commit;
+}
+
+pub TUI_app.Action NotesMenu.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_NOTES, code)) {
+        case Some(str cmd): {
+            host.pop_overlay();
+            if (cmd == GIT_ui_core.CMD_NOTE_SET) {
+                GIT_ui_prompt.open_with(host, this, "set", "note for " + GIT_ui_core.short_id(commit), host.note_texts.get(commit).or("").trim());
+            }
+            if (cmd == GIT_ui_core.CMD_NOTE_REMOVE) {
+                if (host.note_texts.contains(commit)) {
+                    GIT_ui_prompt.open(host, this, "remove", "remove the note of " + GIT_ui_core.short_id(commit) + "? type y");
+                } else {
+                    host.say("notes: " + GIT_ui_core.short_id(commit) + " has no note");
+                }
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+/// The prompt's answer (`GIT_ui_prompt.Receiver`).
+pub void NotesMenu.received(str purpose, str text) {
+    str problem = "";
+    if (purpose == "set") {
+        if (text.trim() == "") {
+            host.say("notes: an empty note is not saved (d removes one)");
+            return;
+        }
+        problem = GIT_notes.write(host.gitdir, commit, text.trim());
+    } else if (text.trim() == "y") {
+        problem = GIT_notes.write(host.gitdir, commit, "");
+    } else {
+        host.say("notes: not removed");
+        return;
+    }
+    if (problem != "") {
+        host.say("notes: " + problem);
+    } else {
+        host.log_command("notes " + purpose + " " + GIT_ui_core.short_id(commit));
+        host.say("note of " + GIT_ui_core.short_id(commit) + " saved");
+    }
+    host.reload();
+}
+
+pub void NotesMenu.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("notes of " + GIT_ui_core.short_id(commit), GIT_ui_sequencer.items_of(GIT_ui_core.SCOPE_NOTES));
+    which_key.render(buffer, area);
+}
+
+pub List<GIT_ui_core.Hint> NotesMenu.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_NOTES);
+}
+
+pub void open(GIT_ui_core.Core core) {
+    str commit = GIT_ui_sequencer.commit_under_cursor(core);
+    if (commit == "") {
+        core.say("notes: put the cursor on a commit");
+        return;
+    }
+    core.push_overlay(NotesMenu(core, commit));
+}

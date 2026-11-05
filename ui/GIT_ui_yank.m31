@@ -1,0 +1,142 @@
+// `y`: copy to the clipboard (lazygit's copy menu), by OSC 52 through the terminal, so it reaches
+// the clipboard of the machine the terminal is on, also over ssh. A terminal that does not
+// take OSC 52 ignores it; `M31GIT_COPY=off` writes nothing. A menu over what the cursor is on:
+//   h the commit's full hash   s its short hash   m its subject   a its author
+//   f the path of the file     b the branch's name (the one under the cursor, else the current)
+// The text is also said in the message row, so a terminal without OSC 52 still shows it.
+
+import core.GIT_object;
+import diff.GIT_merge;
+import ui.GIT_ui_core;
+import ui.GIT_ui_model;
+import ui.GIT_ui_sequencer;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+import tui.widgets.TUI_menu;
+import tui.widgets.TUI_outline;
+
+type YankMenu {
+    GIT_ui_core.Core host;
+}
+
+pub TUI_app.Action YankMenu.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_YANK, code)) {
+        case Some(str cmd): {
+            host.pop_overlay();
+            str commit = GIT_ui_sequencer.commit_under_cursor(host);
+            str text = "";
+            str what = "";
+            if (cmd == GIT_ui_core.CMD_YANK_HASH) {
+                text = commit;
+                what = "the commit's hash";
+            }
+            if (cmd == GIT_ui_core.CMD_YANK_SHORT) {
+                text = GIT_ui_core.short_id(commit);
+                if (commit == "") {
+                    text = "";
+                }
+                what = "the short hash";
+            }
+            if (cmd == GIT_ui_core.CMD_YANK_SUBJECT || cmd == GIT_ui_core.CMD_YANK_AUTHOR) {
+                if (commit != "") {
+                    match (GIT_merge.read_commit(host.gitdir, commit)) {
+                        case Ok(GIT_object.Commit found): {
+                            if (cmd == GIT_ui_core.CMD_YANK_SUBJECT) {
+                                text = first_line(found.message.utf8().or(""));
+                                what = "the subject";
+                            } else {
+                                text = found.author.name.utf8().or("") + " <" + found.author.email.utf8().or("") + ">";
+                                what = "the author";
+                            }
+                        }
+                        case Err(_): {
+                        }
+                    }
+                }
+            }
+            if (cmd == GIT_ui_core.CMD_YANK_PATH) {
+                text = path_under_cursor(host);
+                what = "the path";
+            }
+            if (cmd == GIT_ui_core.CMD_YANK_BRANCH) {
+                text = branch_name(host);
+                what = "the branch name";
+            }
+            if (text == "") {
+                host.say("copy: there is no " + what + " under the cursor");
+            } else {
+                host.pending_copy = text;
+                host.say("copied " + what + ": " + text);
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+pub void YankMenu.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("copy", GIT_ui_sequencer.items_of(GIT_ui_core.SCOPE_YANK));
+    which_key.render(buffer, area);
+}
+
+pub List<GIT_ui_core.Hint> YankMenu.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_YANK);
+}
+
+str first_line(str text) {
+    int newline = text.index_of("\n").or(-1);
+    if (newline >= 0) {
+        return text.substr(0, newline);
+    }
+    return text;
+}
+
+str path_under_cursor(GIT_ui_core.Core core) {
+    match (core.outline.current()) {
+        case Some(TUI_outline.Row row): {
+            match (core.paths.get(row.node.id)) {
+                case Some(bytes path): {
+                    return path.utf8().or("");
+                }
+                case None: {
+                }
+            }
+            match (core.file_diffs.get(row.node.id)) {
+                case Some(GIT_ui_model.CommitFileDiff change): {
+                    return change.path.utf8().or("");
+                }
+                case None: {
+                }
+            }
+        }
+        case None: {
+        }
+    }
+    return "";
+}
+
+str branch_name(GIT_ui_core.Core core) {
+    match (core.outline.current()) {
+        case Some(TUI_outline.Row row): {
+            if (row.node.id.starts_with("branch:")) {
+                return row.node.id.substr(7, row.node.id.size());
+            }
+        }
+        case None: {
+        }
+    }
+    for (GIT_ui_model.BranchRow branch_row in core.branch_rows) {
+        if (branch_row.branch.is_current) {
+            return branch_row.branch.name;
+        }
+    }
+    return "";
+}
+
+pub void open(GIT_ui_core.Core core) {
+    core.push_overlay(YankMenu(core));
+}

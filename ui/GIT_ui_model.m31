@@ -417,13 +417,28 @@ pub Result<List<CommitFileDiff>, GIT_object.Error> commit_changes(str gitdir, GI
 /// and then the files are what they asked for: `Enter` on a commit shows its
 /// files at once, `Enter` on a file shows its diff. A fold recorded in
 /// `collapsed` still wins, as everywhere else.
-pub List<TUI_outline.Node> commit_node(GIT_log.Entry entry, List<CommitFileDiff> changes, Map<str, bool> collapsed, Map<str, CommitFileDiff> out_file_diffs, str graph = "") {
+pub List<TUI_outline.Node> commit_node(GIT_log.Entry entry, List<CommitFileDiff> changes, Map<str, bool> collapsed, Map<str, CommitFileDiff> out_file_diffs, str graph = "", str note = "", bool is_marked = false) {
     str id = "commit:" + entry.id;
-    str label = graph + entry.id.substr(0, 7) + "  " + first_line(entry.commit.message);
+    str mark = "";
+    if (is_marked) {
+        mark = "+ ";
+    }
+    str label = mark + graph + entry.id.substr(0, 7) + "  " + first_line(entry.commit.message);
     List<TUI_outline.Node> body = [];
     str author = GIT_sbs.visible(entry.commit.author.name.utf8().or("<non-utf8>") + " <" + entry.commit.author.email.utf8().or("<non-utf8>") + ">");
     body.push(TUI_outline.Node.leaf(id + ":author", "Author: " + author));
     body.push(TUI_outline.Node.leaf(id + ":date", "Date:   " + date.iso(entry.commit.author.when)));
+    if (note != "") {
+        int note_index = 0;
+        for (str note_line in text.lines(note)) {
+            str prefix = "        ";
+            if (note_index == 0) {
+                prefix = "Notes:  ";
+            }
+            body.push(TUI_outline.Node.leaf(id + ":note" + note_index.to_str(), prefix + GIT_sbs.visible(note_line)));
+            note_index = note_index + 1;
+        }
+    }
     str message = entry.commit.message.utf8().or("<non-utf8 message>");
     int line_index = 0;
     for (str line in text.lines(message)) {
@@ -467,6 +482,48 @@ pub List<TUI_outline.Node> commit_node(GIT_log.Entry entry, List<CommitFileDiff>
 /// working-tree sections' rows do -- there is no index or working tree to
 /// fall back on for a path that existed only in some past commit.
 ///
+/// The file rows of one section as a tree of directories (the `\`` toggle): `rows` all lie under
+/// `base` (a path ending in `/`, or ""), the files directly in it come after its directories, and a
+/// directory is a section named `<kind>:dir:<path>` holding what is below it. A file keeps the id
+/// `<kind>:<path>` the staging keys look up, so only its label is shortened.
+List<TUI_outline.Node> tree_level(str kind, List<PathRow> rows, str base, bool is_marked, Map<str, bool> collapsed, Map<str, bytes> out_paths) {
+    List<TUI_outline.Node> directories = [];
+    List<TUI_outline.Node> files = [];
+    List<str> seen = [];
+    for (PathRow row in rows) {
+        str rest = row.path.substr(base.size(), row.path.size());
+        int slash = rest.index_of("/").or(-1);
+        if (slash < 0) {
+            str id = kind + ":" + row.path;
+            out_paths.set(id, row.raw);
+            str label = rest;
+            if (is_marked) {
+                label = mark_str(row.mark) + "  " + rest;
+            }
+            files.push(TUI_outline.Node.leaf(id, label));
+            continue;
+        }
+        str name = rest.substr(0, slash);
+        if (seen.contains(name)) {
+            continue;
+        }
+        seen.push(name);
+        str below = base + name + "/";
+        List<PathRow> inside = [];
+        for (PathRow other in rows) {
+            if (other.path.starts_with(below)) {
+                inside.push(other);
+            }
+        }
+        str dir_id = kind + ":dir:" + below;
+        directories.push(TUI_outline.Node.section(dir_id, name + "/ (" + inside.size().to_str() + ")", tree_level(kind, inside, below, is_marked, collapsed, out_paths), is_expanded: is_expanded_for(collapsed, dir_id, true)));
+    }
+    for (TUI_outline.Node file in files) {
+        directories.push(file);
+    }
+    return directories;
+}
+
 /// `changes_by_commit` is `State.commit_changes_cache`: `commit_changes`'s
 /// result for every commit unfolded so far, keyed by commit id. A commit
 /// not in it (never unfolded) renders with an empty file list -- which is
@@ -474,35 +531,53 @@ pub List<TUI_outline.Node> commit_node(GIT_log.Entry entry, List<CommitFileDiff>
 /// cache and rebuilds (`State.toggle_current`). The computing happens
 /// elsewhere, this only ever renders what it is handed, which is what keeps
 /// this function itself free of I/O (this doc comment's own first line).
-pub TUI_outline.Outline build_outline(GIT_status.Status status, List<GIT_log.Entry> log, Map<str, List<CommitFileDiff>> changes_by_commit, Map<str, bool> collapsed, Map<str, bytes> out_paths, Map<str, CommitFileDiff> out_file_diffs, List<BranchRow> branches, List<str> stashes = [], Map<str, str> graph = {}, str commits_note = "") {
+pub TUI_outline.Outline build_outline(GIT_status.Status status, List<GIT_log.Entry> log, Map<str, List<CommitFileDiff>> changes_by_commit, Map<str, bool> collapsed, Map<str, bytes> out_paths, Map<str, CommitFileDiff> out_file_diffs, List<BranchRow> branches, List<str> stashes = [], Map<str, str> graph = {}, str commits_note = "", Map<str, str> notes = {}, List<str> marks = [], bool is_tree = false) {
     out_paths.clear();
     out_file_diffs.clear();
     List<TUI_outline.Node> roots = [];
     List<TUI_outline.Node> untracked_children = [];
-    for (PathRow row in rows_from_untracked(status.untracked)) {
-        str id = "untracked:" + row.path;
-        out_paths.set(id, row.raw);
-        untracked_children.push(TUI_outline.Node.leaf(id, row.path));
+    if (is_tree) {
+        for (TUI_outline.Node node in tree_level("untracked", rows_from_untracked(status.untracked), "", false, collapsed, out_paths)) {
+            untracked_children.push(node);
+        }
+    } else {
+        for (PathRow row in rows_from_untracked(status.untracked)) {
+            str id = "untracked:" + row.path;
+            out_paths.set(id, row.raw);
+            untracked_children.push(TUI_outline.Node.leaf(id, row.path));
+        }
     }
     roots.push(TUI_outline.Node.section("untracked", "Untracked files (" + untracked_children.size().to_str() + ")", untracked_children, is_expanded: is_expanded_for(collapsed, "untracked", true)));
     List<TUI_outline.Node> unstaged_children = [];
-    for (PathRow row in rows_from_deltas(status.unstaged)) {
-        str id = "unstaged:" + row.path;
-        out_paths.set(id, row.raw);
-        unstaged_children.push(TUI_outline.Node.leaf(id, mark_str(row.mark) + "  " + row.path));
+    if (is_tree) {
+        for (TUI_outline.Node node in tree_level("unstaged", rows_from_deltas(status.unstaged), "", true, collapsed, out_paths)) {
+            unstaged_children.push(node);
+        }
+    } else {
+        for (PathRow row in rows_from_deltas(status.unstaged)) {
+            str id = "unstaged:" + row.path;
+            out_paths.set(id, row.raw);
+            unstaged_children.push(TUI_outline.Node.leaf(id, mark_str(row.mark) + "  " + row.path));
+        }
     }
     roots.push(TUI_outline.Node.section("unstaged", "Unstaged changes (" + unstaged_children.size().to_str() + ")", unstaged_children, is_expanded: is_expanded_for(collapsed, "unstaged", true)));
     List<TUI_outline.Node> staged_children = [];
-    for (PathRow row in rows_from_deltas(status.staged)) {
-        str id = "staged:" + row.path;
-        out_paths.set(id, row.raw);
-        staged_children.push(TUI_outline.Node.leaf(id, mark_str(row.mark) + "  " + row.path));
+    if (is_tree) {
+        for (TUI_outline.Node node in tree_level("staged", rows_from_deltas(status.staged), "", true, collapsed, out_paths)) {
+            staged_children.push(node);
+        }
+    } else {
+        for (PathRow row in rows_from_deltas(status.staged)) {
+            str id = "staged:" + row.path;
+            out_paths.set(id, row.raw);
+            staged_children.push(TUI_outline.Node.leaf(id, mark_str(row.mark) + "  " + row.path));
+        }
     }
     roots.push(TUI_outline.Node.section("staged", "Staged changes (" + staged_children.size().to_str() + ")", staged_children, is_expanded: is_expanded_for(collapsed, "staged", true)));
     List<TUI_outline.Node> commit_children = [];
     for (GIT_log.Entry entry in log) {
         List<CommitFileDiff> changes = changes_by_commit.get(entry.id).or([]);
-        for (TUI_outline.Node node in commit_node(entry, changes, collapsed, out_file_diffs, graph: graph.get(entry.id).or(""))) {
+        for (TUI_outline.Node node in commit_node(entry, changes, collapsed, out_file_diffs, graph: graph.get(entry.id).or(""), note: notes.get(entry.id).or(""), is_marked: marks.contains(entry.id))) {
             commit_children.push(node);
         }
     }
@@ -727,7 +802,7 @@ pub str commit_template() {
 // One entry on its way into a tree, carrying only what `GIT_object.write_tree`
 // needs plus the bytes to group by -- not a full `GIT_index.Entry`, so the
 // recursion below never has to reconstruct one.
-type Leaf {
+pub type Leaf {
     int mode;
     str id;
     bytes path;

@@ -112,6 +112,7 @@ if (mouse_choice != "") {
 GIT_ui_app.App app = GIT_ui_app.open(state);
 TUI_app.Loop loop = GIT_ui_app.make_loop(is_mouse, GIT_ui_app.is_sync_wanted_here(sync_choice));
 GIT_ui_app.apply_width(loop, probe_choice, borders_choice);
+app.loop = Option<TUI_app.Loop>.Some(loop);
 bool is_running = true;
 while (is_running) {
     match (loop.run_with(app, app, app, TUI_app.NoMouse())) {

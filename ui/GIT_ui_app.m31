@@ -19,6 +19,7 @@
 //     routes nothing, and no motion is asked for;
 //   - no paste, focus or keyboard mode is asked for.
 
+import core.GIT_env;
 import term;
 import os;
 import tui.app.TUI_app;
@@ -32,6 +33,8 @@ import ui.GIT_ui_autorefresh;
 pub type App {
     pub GIT_client.State state;
     pub GIT_ui_autorefresh.AutoRefresh refresher;
+    /// The loop, so a copy (`y`) can be written through it as OSC 52.
+    pub Option<TUI_app.Loop> loop = Option<TUI_app.Loop>.None;
 }
 
 /// `TUI_widget.Widget`: one frame.
@@ -42,7 +45,22 @@ pub void App.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
 /// `TUI_app.Handler`: one key, mouse report or reply.
 pub TUI_app.Action App.handle(term.Event event) {
     refresher.note_input();
-    return state.handle(event);
+    TUI_app.Action action = state.handle(event);
+    str copy = state.core().pending_copy;
+    if (copy != "") {
+        state.core().pending_copy = "";
+        match (loop) {
+            case Some(TUI_app.Loop running): {
+                if (running.copy(copy) == 0) {
+                    state.core().say("copy is off (M31GIT_COPY=off): " + copy);
+                }
+            }
+            case None: {
+            }
+        }
+        return TUI_app.Action.Redraw;
+    }
+    return action;
 }
 
 /// `TUI_app.Ticker`: every `GIT_ui_autorefresh.TICK_MS`.
@@ -101,6 +119,7 @@ pub TUI_app.Loop make_loop(bool is_mouse, bool is_sync) {
     // CTRL-L writes every cell again; and `--sync on` means Terminal.app too (`auto` leaves it out itself)
     loop.should_repaint_on_ctrl_l = true;
     loop.should_sync_on_apple_terminal = is_sync;
+    loop.is_copy_allowed = GIT_env.get("COPY").or("").trim().to_lower() != "off";
     return loop;
 }
 

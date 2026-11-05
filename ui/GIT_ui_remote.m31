@@ -9,6 +9,7 @@ import net.GIT_http_push;
 import net.GIT_gitfetch;
 import net.GIT_gitpush;
 import net.GIT_gitremote;
+import core.GIT_gitclean;
 import core.GIT_gitworktree;
 import ui.GIT_ui_prompt;
 import io;
@@ -259,6 +260,8 @@ pub void RemoteLayer.run_net_now() {
         status = GIT_gitpush.run_push(worktree, [], args);
     } else if (verb == "remote") {
         status = GIT_gitremote.run_remote(worktree, [], args);
+    } else if (verb == "clean") {
+        status = GIT_gitclean.run_clean(worktree, [], args);
     } else if (verb == "worktree") {
         status = GIT_gitworktree.run_worktree(worktree, [], args);
     } else if (verb == "sh") {

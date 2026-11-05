@@ -3,6 +3,22 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.35.0
+
+- **`y` copies** the commit's hash, short hash, subject or author, the file's path or the branch's name to the
+  clipboard with OSC 52 (tui's `Loop.copy`); `M31GIT_COPY=off` writes nothing. The text is also in the message row.
+- **`K` in Status: clean.** `n` a dry run (`git clean -n -d`), `f` remove the untracked files and directories, `x` the
+  ignored ones too; both ask you to type y. They run the library's `git clean` on the terminal.
+- **`O` in History: notes.** Add or edit the commit's note (one line) or remove it; notes show under the commit's date,
+  also those `git notes` made. `diff/GIT_notes.m31` writes git's format (`refs/notes/commits` or `core.notesRef`).
+- **Cherry-pick several**: `.` marks the commit under the cursor (`+`), `A` then `m` cherry-picks every marked commit,
+  oldest first.
+- **Your own keys**: `M31GIT_KEYS="stage=a;unstage=A"` or `~/.config/m31git/keys` (`command key [key...]` per line)
+  replace the keys of the outline, diff, commit and global commands.
+- **File tree**: the backtick shows the changed files as directories with counts, or the flat list again.
+- `tests/pty_misc.py` (33 checks, `tests/test_misc.sh`).
+- The advertised user agent is `1git/0.35.0`.
+
 ## 0.34.0
 
 - **Ignore**: `I` in Status on an untracked file: `g` its path in `.gitignore`, `e` its extension, `d` its directory,

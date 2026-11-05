@@ -110,7 +110,10 @@ import ui.GIT_ui_stash;
 import ui.GIT_ui_tags;
 import ui.GIT_ui_logmenu;
 import ui.GIT_ui_bisect;
+import ui.GIT_ui_clean;
 import ui.GIT_ui_custom;
+import ui.GIT_ui_notes;
+import ui.GIT_ui_yank;
 import ui.GIT_ui_worktrees;
 import ui.GIT_ui_ignore;
 import ui.GIT_ui_reflog;
@@ -1020,6 +1023,42 @@ TUI_app.Action State.run_outline_command(str cmd, str name) {
     }
     if (cmd == GIT_ui_core.CMD_BISECT) {
         GIT_ui_bisect.open(core());
+        return TUI_app.Action.Redraw;
+    }
+    if (cmd == GIT_ui_core.CMD_YANK) {
+        GIT_ui_yank.open(core());
+        return TUI_app.Action.Redraw;
+    }
+    if (cmd == GIT_ui_core.CMD_CLEAN) {
+        GIT_ui_clean.open(core());
+        return TUI_app.Action.Redraw;
+    }
+    if (cmd == GIT_ui_core.CMD_NOTES) {
+        GIT_ui_notes.open(core());
+        return TUI_app.Action.Redraw;
+    }
+    if (cmd == GIT_ui_core.CMD_MARK) {
+        str mark_target = GIT_ui_sequencer.commit_under_cursor(core());
+        if (mark_target == "") {
+            say("mark: put the cursor on a commit");
+        } else if (marked.contains(mark_target)) {
+            marked.remove_at(marked.index_of(mark_target).or(0));
+            say(marked.size().to_str() + " commit(s) marked");
+        } else {
+            marked.push(mark_target);
+            say(marked.size().to_str() + " commit(s) marked (A then m cherry-picks them)");
+        }
+        reload();
+        return TUI_app.Action.Redraw;
+    }
+    if (cmd == GIT_ui_core.CMD_TREE) {
+        is_tree = !is_tree;
+        if (is_tree) {
+            say("files as a tree of directories (` for the flat list)");
+        } else {
+            say("files as a flat list");
+        }
+        reload();
         return TUI_app.Action.Redraw;
     }
     if (cmd == GIT_ui_core.CMD_CUSTOM) {
