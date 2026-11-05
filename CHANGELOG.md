@@ -3,6 +3,19 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.37.1
+
+Two differences from git that CI found on git 2.56 (and that 2.49 shows too).
+
+- **`-show` under a path limit** (`-show HEAD --path src`, `-show --path a.txt`): a commit that changes none of the paths
+  prints nothing, not even its header; git turns the always-show-header of `show` off when there is a path limit. A merge
+  under the default dense diff behaves the same. All 7789 forms of `scripts/compare_show.sh` are now byte-identical to git
+  (13 differed).
+- **`-push` to a URL that is a configured remote's URL** moves that remote's tracking refs too (`refs/remotes/origin/x`,
+  reflog `update by push`), as git 2.5x does. git 2.49 does not; `scripts/compare_net.sh` ignores that one ref in the case
+  "push: to a URL" so both versions pass.
+- The advertised user agent is `1git/0.37.1`.
+
 ## 0.37.0
 
 Milestone 2 of `docs/GIT-PARITY.md`, first part.
