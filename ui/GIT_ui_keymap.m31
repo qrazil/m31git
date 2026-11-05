@@ -231,6 +231,7 @@ pub List<Entry> entries() {
     table.push(row("history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_DETACH, "check out the commit (detached HEAD)", "History", 0, when: "idle"));
     table.push(row("history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_QUICK, "edit the commit: reword, drop, squash, fixup, move, amend", "History", 6, when: "idle"));
     table.push(row("history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_REFLOG, "reflog of HEAD: reset, check out, cherry-pick an entry", "History", 0));
+    table.push(row("history", VIEW_DOC, scope_outline, GIT_ui_core.CMD_LOGMENU, "log menu: filter, other revision, graph, diff refs", "History", 7));
     // --- Branches ----------------------------------------------------------------
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_TOGGLE, "switch to the branch", "Branch", 1, when: "idle"));
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_BRANCH, "branch menu", "Branch", 2, when: "idle"));

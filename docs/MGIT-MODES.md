@@ -45,7 +45,7 @@ is the most the bottom row ever shows at once.
 |---|---|---|---|
 | **1 Status** | untracked, unstaged and staged files; the hunk diff when you open one | 10 (8 in the diff) | 8 |
 | **2 Commit** | what the commit will say and contain; amend; sign-off | 5 | 8 |
-| **3 History** | the log, a commit's files, file history; reset, check out, edit a commit; the reflog | 12 | 8 |
+| **3 History** | the log, a commit's files, file history; reset, check out, edit a commit; the reflog; log filters and graph | 13 | 8 |
 | **4 Branches** | local branches, tags, delete, rename, merge, rebase, push and pull | 12 | 8 |
 | **5 Stash** | the stash list, push, pop, apply, drop | 2 (plus the stash menu's own) | 6 |
 
@@ -147,6 +147,7 @@ changed); `Enter` on one of its files opens that commit's diff of the file.
 | `G` | reset the current branch to the commit under the cursor: a menu of `s` soft, `m` mixed, `h` hard (below) |
 | `o` | check the commit out with a detached HEAD (`git checkout --detach`) |
 | `E` | edit the commit: a menu of `r` reword, `e` edit, `d` drop (asks), `s` squash down, `f` fixup down, `k`/`j` move up/down, `a` amend with the staged changes, `F` new `fixup!` commit (a rebase -i underneath; `r` continues/aborts) |
+| `f` | the log menu: `a` author, `g` message, `s` -S, `p` path, `r` another revision, `G` graph column, `c` clear, `d` diff two refs, `D` the commit against HEAD |
 | `L` | the reflog of HEAD as a list: Enter reset menu, `o` detached checkout, `A` cherry-pick |
 | `B` / `H` | blame / history of a commit's file |
 | the movement, fold and search keys of Status | |

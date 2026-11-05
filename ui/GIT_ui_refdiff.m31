@@ -1,0 +1,177 @@
+// `git diff A B` as text lines for the read-only view: the files that differ
+// between two commits (or a commit and HEAD) and each file's hunks. Specs:
+//   A..B   the diff from A to B        A...B  from the merge base of A and B to B
+//   A      from A to HEAD
+// What it gives is a view for reading, not a patch: each hunk line is shown
+// with a two-column marker like the commit view's.
+
+import core.GIT_graph;
+import core.GIT_object;
+import core.GIT_pathtree;
+import core.GIT_revparse;
+import diff.GIT_hunks;
+import tui.widgets.TUI_diff_view;
+
+pub type Sides {
+    pub str old_id;
+    pub str new_id;
+    pub str old_label;
+    pub str new_label;
+}
+
+/// The two commits a spec names, or the reason it names none.
+pub Result<Sides, str> sides(str gitdir, str spec) {
+    str left = spec;
+    str right = "HEAD";
+    bool is_merge_base = false;
+    int three = spec.index_of("...").or(-1);
+    int two = spec.index_of("..").or(-1);
+    if (three >= 0) {
+        left = spec.substr(0, three);
+        right = spec.substr(three + 3, spec.size());
+        is_merge_base = true;
+    } else if (two >= 0) {
+        left = spec.substr(0, two);
+        right = spec.substr(two + 2, spec.size());
+    }
+    if (left == "") {
+        left = "HEAD";
+    }
+    if (right == "") {
+        right = "HEAD";
+    }
+    str left_id = "";
+    str right_id = "";
+    match (GIT_revparse.commit_id(gitdir, left)) {
+        case Ok(str found): {
+            left_id = found;
+        }
+        case Err(GIT_revparse.Error error): {
+            return Result<Sides, str>.Err(left + ": " + error.to_str());
+        }
+    }
+    match (GIT_revparse.commit_id(gitdir, right)) {
+        case Ok(str found): {
+            right_id = found;
+        }
+        case Err(GIT_revparse.Error error): {
+            return Result<Sides, str>.Err(right + ": " + error.to_str());
+        }
+    }
+    if (is_merge_base) {
+        match (GIT_graph.merge_bases(gitdir, left_id, right_id)) {
+            case Ok(List<str> bases): {
+                if (bases.size() == 0) {
+                    return Result<Sides, str>.Err(left + " and " + right + " have no merge base");
+                }
+                left_id = bases[0];
+            }
+            case Err(GIT_graph.Error error): {
+                return Result<Sides, str>.Err(error.to_str());
+            }
+        }
+    }
+    return Result<Sides, str>.Ok(Sides(left_id, right_id, left, right));
+}
+
+/// Every file that differs, as "path" -> (old blob id or "", new blob id or ""), sorted by path.
+pub Result<List<str>, str> changed_paths(str gitdir, Sides sides, Map<str, str> old_tree, Map<str, str> new_tree) {
+    List<str> paths = [];
+    for (str path in new_tree.keys()) {
+        if (new_tree.get(path).or("") != old_tree.get(path).or("")) {
+            paths.push(path);
+        }
+    }
+    for (str path in old_tree.keys()) {
+        if (!new_tree.contains(path)) {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    return Result<List<str>, str>.Ok(paths);
+}
+
+Map<str, str> tree_of(str gitdir, str commit_id) {
+    match (GIT_pathtree.read_commit(gitdir, commit_id)) {
+        case Ok(GIT_object.Commit commit): {
+            match (GIT_object.flatten_tree(gitdir, commit.tree)) {
+                case Ok(Map<str, str> flat): {
+                    return flat;
+                }
+                case Err: {
+                }
+            }
+        }
+        case Err: {
+        }
+    }
+    return {};
+}
+
+bytes blob_of(str gitdir, Map<str, str> tree, str path) {
+    match (tree.get(path)) {
+        case Some(str id): {
+            match (GIT_pathtree.blob(gitdir, id)) {
+                case Ok(bytes content): {
+                    return content;
+                }
+                case Err: {
+                }
+            }
+        }
+        case None: {
+        }
+    }
+    return [];
+}
+
+/// The lines of the view; an `Err` is a sentence for the message row.
+pub Result<List<str>, str> lines(str gitdir, str spec) {
+    Sides found = sides(gitdir, spec)?;
+    Map<str, str> old_tree = tree_of(gitdir, found.old_id);
+    Map<str, str> new_tree = tree_of(gitdir, found.new_id);
+    List<str> paths = changed_paths(gitdir, found, old_tree, new_tree)?;
+    List<str> body = [];
+    int added = 0;
+    int removed = 0;
+    for (str path in paths) {
+        str kind = "modified";
+        if (!old_tree.contains(path)) {
+            kind = "added";
+        } else if (!new_tree.contains(path)) {
+            kind = "deleted";
+        }
+        body.push("");
+        body.push("--- " + path + "  (" + kind + ")");
+        match (GIT_hunks.hunks(blob_of(gitdir, old_tree, path), blob_of(gitdir, new_tree, path))) {
+            case Binary: {
+                body.push("(binary file)");
+            }
+            case Hunks(List<TUI_diff_view.Hunk> hunks): {
+                for (TUI_diff_view.Hunk hunk in hunks) {
+                    body.push(hunk.header);
+                    for (TUI_diff_view.Line line in hunk.lines) {
+                        match (line.kind) {
+                            case Context: {
+                                body.push("  " + line.text);
+                            }
+                            case Add: {
+                                body.push("+ " + line.text);
+                                added = added + 1;
+                            }
+                            case Remove: {
+                                body.push("- " + line.text);
+                                removed = removed + 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    List<str> out = ["diff " + found.old_id.substr(0, 7) + " (" + found.old_label + ") .. " + found.new_id.substr(0, 7) + " (" + found.new_label + ")", paths.size().to_str() + " file(s) changed, +" + added.to_str() + " -" + removed.to_str()];
+    for (str line in body) {
+        out.push(line);
+    }
+    return Result<List<str>, str>.Ok(out);
+}

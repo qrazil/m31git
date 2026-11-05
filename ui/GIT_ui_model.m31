@@ -417,9 +417,9 @@ pub Result<List<CommitFileDiff>, GIT_object.Error> commit_changes(str gitdir, GI
 /// and then the files are what they asked for: `Enter` on a commit shows its
 /// files at once, `Enter` on a file shows its diff. A fold recorded in
 /// `collapsed` still wins, as everywhere else.
-pub List<TUI_outline.Node> commit_node(GIT_log.Entry entry, List<CommitFileDiff> changes, Map<str, bool> collapsed, Map<str, CommitFileDiff> out_file_diffs) {
+pub List<TUI_outline.Node> commit_node(GIT_log.Entry entry, List<CommitFileDiff> changes, Map<str, bool> collapsed, Map<str, CommitFileDiff> out_file_diffs, str graph = "") {
     str id = "commit:" + entry.id;
-    str label = entry.id.substr(0, 7) + "  " + first_line(entry.commit.message);
+    str label = graph + entry.id.substr(0, 7) + "  " + first_line(entry.commit.message);
     List<TUI_outline.Node> body = [];
     str author = GIT_sbs.visible(entry.commit.author.name.utf8().or("<non-utf8>") + " <" + entry.commit.author.email.utf8().or("<non-utf8>") + ">");
     body.push(TUI_outline.Node.leaf(id + ":author", "Author: " + author));
@@ -474,7 +474,7 @@ pub List<TUI_outline.Node> commit_node(GIT_log.Entry entry, List<CommitFileDiff>
 /// cache and rebuilds (`State.toggle_current`). The computing happens
 /// elsewhere, this only ever renders what it is handed, which is what keeps
 /// this function itself free of I/O (this doc comment's own first line).
-pub TUI_outline.Outline build_outline(GIT_status.Status status, List<GIT_log.Entry> log, Map<str, List<CommitFileDiff>> changes_by_commit, Map<str, bool> collapsed, Map<str, bytes> out_paths, Map<str, CommitFileDiff> out_file_diffs, List<BranchRow> branches, List<str> stashes = []) {
+pub TUI_outline.Outline build_outline(GIT_status.Status status, List<GIT_log.Entry> log, Map<str, List<CommitFileDiff>> changes_by_commit, Map<str, bool> collapsed, Map<str, bytes> out_paths, Map<str, CommitFileDiff> out_file_diffs, List<BranchRow> branches, List<str> stashes = [], Map<str, str> graph = {}, str commits_note = "") {
     out_paths.clear();
     out_file_diffs.clear();
     List<TUI_outline.Node> roots = [];
@@ -502,7 +502,7 @@ pub TUI_outline.Outline build_outline(GIT_status.Status status, List<GIT_log.Ent
     List<TUI_outline.Node> commit_children = [];
     for (GIT_log.Entry entry in log) {
         List<CommitFileDiff> changes = changes_by_commit.get(entry.id).or([]);
-        for (TUI_outline.Node node in commit_node(entry, changes, collapsed, out_file_diffs)) {
+        for (TUI_outline.Node node in commit_node(entry, changes, collapsed, out_file_diffs, graph: graph.get(entry.id).or(""))) {
             commit_children.push(node);
         }
     }
@@ -512,6 +512,9 @@ pub TUI_outline.Outline build_outline(GIT_status.Status status, List<GIT_log.Ent
         // addressable row that `handle_enter` turns into a longer walk.
         commit_children.push(TUI_outline.Node.leaf(LOAD_MORE_ID, "… load " + LOG_PAGE.to_str() + " more commits"));
         commits_label = "Commits (" + log.size().to_str() + "+)";
+    }
+    if (commits_note != "") {
+        commits_label = commits_label + "  [" + commits_note + "]";
     }
     roots.push(TUI_outline.Node.section("commits", commits_label, commit_children, is_expanded: is_expanded_for(collapsed, "commits", true)));
     // Local branches, the current one starred -- `b` acts on the row under

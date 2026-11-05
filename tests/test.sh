@@ -472,6 +472,7 @@ source tests/test_remote.sh
 # git/ours pairings of start and continue) and drives the UI under a pty.
 
 source tests/test_rebase.sh
+source tests/test_log.sh
 
 # `test_ssh.sh` runs a disposable sshd (throwaway keys, ephemeral port, a
 # throwaway $HOME; the real ~/.ssh is never touched) and kills it by PID. It

@@ -58,6 +58,7 @@ import core.GIT_refs;
 import diff.GIT_sequencer;
 import diff.GIT_stash;
 import core.GIT_status;
+import ui.GIT_ui_logfilter;
 import ui.GIT_ui_merge_model;
 import ui.GIT_ui_modes;
 import ui.GIT_ui_model;
@@ -106,6 +107,7 @@ pub const str SCOPE_PULL_ASK = "pull-ask";
 pub const str SCOPE_OVERVIEW = "overview";
 pub const str SCOPE_RESET = "reset";
 pub const str SCOPE_QUICK = "quick";
+pub const str SCOPE_LOGMENU = "logmenu";
 pub const str SCOPE_REFLOG = "reflog";
 pub const str CMD_QUIT = "quit";
 /// Esc at the base: leave to the Status mode, or quit from it.
@@ -245,6 +247,16 @@ pub const str CMD_RESET_MIXED = "reset-mixed";
 pub const str CMD_RESET_HARD = "reset-hard";
 pub const str CMD_DETACH = "detach";
 pub const str CMD_QUICK = "quick";
+pub const str CMD_LOGMENU = "logmenu";
+pub const str CMD_LOG_AUTHOR = "log-author";
+pub const str CMD_LOG_GREP = "log-grep";
+pub const str CMD_LOG_PICKAXE = "log-pickaxe";
+pub const str CMD_LOG_PATH = "log-path";
+pub const str CMD_LOG_REV = "log-rev";
+pub const str CMD_LOG_GRAPH = "log-graph";
+pub const str CMD_LOG_CLEAR = "log-clear";
+pub const str CMD_LOG_DIFF = "log-diff";
+pub const str CMD_LOG_DIFF_HERE = "log-diff-here";
 pub const str CMD_REFLOG = "reflog";
 pub const str CMD_Q_REWORD = "quick-reword";
 pub const str CMD_Q_EDIT = "quick-edit";
@@ -408,6 +420,8 @@ pub type Core {
     pub int log_limit = GIT_ui_model.LOG_PAGE;
     pub GIT_status.Status last_status = GIT_status.Status([], [], []);
     pub List<GIT_log.Entry> log = [];
+    /// Which revision the log is of and how it is filtered (the `f` menu).
+    pub GIT_ui_logfilter.Filter log_filter = GIT_ui_logfilter.Filter();
     /// The `@` ring buffer: one line per write operation, oldest first.
     pub List<str> command_log = [];
     /// The last `/` query, for `n`/`N`.
@@ -518,12 +532,16 @@ pub void Core.refresh() {
             message = "status: " + error.to_str();
         }
     }
-    match (GIT_log.walk(gitdir, "HEAD", log_limit)) {
+    match (GIT_ui_logfilter.run(gitdir, log_filter, log_limit)) {
         case Ok(List<GIT_log.Entry> entries): {
             log = entries;
         }
-        case Err: {
+        case Err(GIT_log.Error error): {
             log = [];
+            if (log_filter.rev != "HEAD") {
+                message = "log of " + log_filter.rev + ": " + error.to_str() + " (the log is back on HEAD)";
+                log_filter.rev = "HEAD";
+            }
         }
     }
     is_merging = GIT_merge.is_in_progress(gitdir);
@@ -847,8 +865,15 @@ pub void Core.enter_mode(str target) {
 /// Build the outline again from what `refresh` last read: every section, the
 /// conflict banners in front, cut down to what the current mode shows. The
 /// cursor goes back to the top; the caller restores it.
+pub Map<str, str> Core.graph_for_log() {
+    if (!log_filter.is_graph) {
+        return {};
+    }
+    return GIT_ui_logfilter.graph_prefixes(log);
+}
+
 pub void Core.rebuild_outline() {
-    TUI_outline.Outline whole = GIT_ui_model.build_outline(last_status, log, commit_changes_cache, collapsed, paths, file_diffs, branch_rows, stashes: stash_labels);
+    TUI_outline.Outline whole = GIT_ui_model.build_outline(last_status, log, commit_changes_cache, collapsed, paths, file_diffs, branch_rows, stashes: stash_labels, graph: graph_for_log(), commits_note: log_filter.describe());
     List<TUI_outline.Node> roots = GIT_ui_merge_model.merge_roots(last_status, is_merging, collapsed, paths, sequence_word, sequence_left);
     for (TUI_outline.Node node in whole.roots) {
         roots.push(node);
@@ -976,6 +1001,7 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_OUTLINE, CMD_DETACH, ["o"], "check out the commit under the cursor with a detached HEAD (git checkout --detach)", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_QUICK, ["E"], "edit the commit under the cursor (a menu): reword, edit, drop, squash or fixup into the one before, move up or down, amend it with the staged changes, make a fixup! commit for it", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_REFLOG, ["L"], "the reflog of HEAD: every place HEAD has been; reset to one, check it out or cherry-pick it", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_LOGMENU, ["f"], "the log menu: filter by author, message, path or -S, the log of another revision, the graph column, a diff between two refs", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_JUMP, ["J"], "show or hide the jump list", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_FOCUS, ["w"], "give the jump list the keys, or take them back", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_SEARCH, ["/"], "search the outline and the log (smart-case: lower case ignores case)", "", ""));
@@ -1049,6 +1075,16 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_QUICK, CMD_Q_AMEND, ["a"], "amend the commit with the staged changes (fixup! plus autosquash; unstaged changes are autostashed)", "a", "amend with staged"));
     table.push(Binding(SCOPE_QUICK, CMD_Q_NEW_FIXUP, ["F"], "commit the staged changes as fixup! <subject> without rebasing (git commit --fixup)", "F", "new fixup!"));
     table.push(Binding(SCOPE_QUICK, CMD_CLOSE, ["escape"], "close", "esc", "close"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_LOG_AUTHOR, ["a"], "author contains a string (Name <email>)", "a", "author"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_LOG_GREP, ["g"], "message contains a string", "g", "message"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_LOG_PICKAXE, ["s"], "-S: commits that add or remove a string", "s", "-S"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_LOG_PATH, ["p"], "commits that touch a file or directory", "p", "path"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_LOG_REV, ["r"], "the log of another branch, tag or commit", "r", "revision"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_LOG_GRAPH, ["G"], "the graph column on or off", "G", "graph"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_LOG_CLEAR, ["c"], "clear every filter and go back to HEAD", "c", "clear"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_LOG_DIFF, ["d"], "diff two refs: A..B, A...B, or A against HEAD", "d", "diff refs"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_LOG_DIFF_HERE, ["D"], "diff the commit under the cursor against HEAD", "D", "diff here"));
+    table.push(Binding(SCOPE_LOGMENU, CMD_CLOSE, ["escape"], "close", "esc", "close"));
     table.push(Binding(SCOPE_REFLOG, CMD_DOWN, ["j", "down"], "next entry", "j/k", "move"));
     table.push(Binding(SCOPE_REFLOG, CMD_UP, ["k", "up"], "previous entry", "", ""));
     table.push(Binding(SCOPE_REFLOG, CMD_REFLOG_RESET, ["enter", "G"], "reset the branch to the entry (soft, mixed, hard)", "enter", "reset"));
@@ -1373,6 +1409,9 @@ pub str scope_title(str scope) {
     if (scope == SCOPE_RESET) {
         return "reset menu (History, G)";
     }
+    if (scope == SCOPE_LOGMENU) {
+        return "log menu (History, f)";
+    }
     if (scope == SCOPE_QUICK) {
         return "commit edit menu (History, E)";
     }
@@ -1384,7 +1423,7 @@ pub str scope_title(str scope) {
 
 /// Every scope, in the order the help overlay lists them.
 pub List<str> all_scopes() {
-    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET, SCOPE_QUICK, SCOPE_REFLOG];
+    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET, SCOPE_QUICK, SCOPE_REFLOG, SCOPE_LOGMENU];
 }
 
 // --- the overlay stack and the command log -------------------------------------

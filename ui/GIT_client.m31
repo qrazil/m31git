@@ -108,6 +108,7 @@ import ui.GIT_ui_state;
 import ui.GIT_ui_statusline;
 import ui.GIT_ui_stash;
 import ui.GIT_ui_tags;
+import ui.GIT_ui_logmenu;
 import ui.GIT_ui_reflog;
 import ui.GIT_ui_undo;
 import io;
@@ -1000,6 +1001,9 @@ TUI_app.Action State.run_outline_command(str cmd, str name) {
     }
     if (cmd == GIT_ui_core.CMD_QUICK) {
         open_quick();
+    }
+    if (cmd == GIT_ui_core.CMD_LOGMENU) {
+        GIT_ui_logmenu.open(core());
     }
     if (cmd == GIT_ui_core.CMD_REFLOG) {
         GIT_ui_reflog.open(core());

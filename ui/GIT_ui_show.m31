@@ -247,3 +247,8 @@ pub void open(GIT_ui_core.Core core, str commit_id, str path) {
     }
     core.push_overlay(overlay);
 }
+
+/// Show any text (a diff between two refs, say) over everything.
+pub void open_text(GIT_ui_core.Core core, str title, List<str> lines) {
+    core.push_overlay(ShowOverlay(core, title, lines));
+}

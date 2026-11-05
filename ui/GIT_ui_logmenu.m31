@@ -1,0 +1,142 @@
+// `f` in History: the log menu (magit's `l`, lazygit's filter and diffing options).
+//   a author contains...   g message contains...   s -S: commits that add or remove a string
+//   p path (a file or a directory)                 r the log of another revision
+//   G the graph column on or off                   c clear every filter (back to HEAD)
+//   d diff two refs (A..B, A...B, or A against HEAD)
+//   D diff the commit under the cursor against HEAD
+// The Commits heading names what is on. The filters are plain substrings
+// (`docs/MGIT-PARITY.md`); the log looks at the newest 2000 commits.
+
+import core.GIT_revparse;
+import ui.GIT_ui_core;
+import ui.GIT_ui_logfilter;
+import ui.GIT_ui_model;
+import ui.GIT_ui_prompt;
+import ui.GIT_ui_refdiff;
+import ui.GIT_ui_sequencer;
+import ui.GIT_ui_show;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+import tui.widgets.TUI_menu;
+
+type LogMenu {
+    GIT_ui_core.Core host;
+}
+
+pub TUI_app.Action LogMenu.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_LOGMENU, code)) {
+        case Some(str cmd): {
+            host.pop_overlay();
+            if (cmd == GIT_ui_core.CMD_LOG_AUTHOR) {
+                GIT_ui_prompt.open_with(host, this, "author", "log: author contains", host.log_filter.author);
+            }
+            if (cmd == GIT_ui_core.CMD_LOG_GREP) {
+                GIT_ui_prompt.open_with(host, this, "grep", "log: message contains", host.log_filter.grep);
+            }
+            if (cmd == GIT_ui_core.CMD_LOG_PICKAXE) {
+                GIT_ui_prompt.open_with(host, this, "pickaxe", "log: commits that add or remove (-S)", host.log_filter.pickaxe);
+            }
+            if (cmd == GIT_ui_core.CMD_LOG_PATH) {
+                GIT_ui_prompt.open_with(host, this, "path", "log: commits touching the path", host.log_filter.path);
+            }
+            if (cmd == GIT_ui_core.CMD_LOG_REV) {
+                GIT_ui_prompt.open(host, this, "rev", "log of (branch, tag or commit; empty for HEAD)");
+            }
+            if (cmd == GIT_ui_core.CMD_LOG_GRAPH) {
+                host.log_filter.is_graph = !host.log_filter.is_graph;
+                host.reload();
+            }
+            if (cmd == GIT_ui_core.CMD_LOG_CLEAR) {
+                host.log_filter = GIT_ui_logfilter.Filter(is_graph: host.log_filter.is_graph);
+                host.log_limit = GIT_ui_model.LOG_PAGE;
+                host.reload();
+                host.say("log: filters cleared");
+            }
+            if (cmd == GIT_ui_core.CMD_LOG_DIFF) {
+                GIT_ui_prompt.open(host, this, "diff", "diff (A..B, A...B, or A against HEAD)");
+            }
+            if (cmd == GIT_ui_core.CMD_LOG_DIFF_HERE) {
+                str target = GIT_ui_sequencer.commit_under_cursor(host);
+                if (target == "") {
+                    host.say("diff: put the cursor on a commit first");
+                } else {
+                    show_diff(target + "..HEAD");
+                }
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+void LogMenu.show_diff(str spec) {
+    match (GIT_ui_refdiff.lines(host.gitdir, spec)) {
+        case Ok(List<str> text): {
+            GIT_ui_show.open_text(host, "diff " + spec, text);
+        }
+        case Err(str reason): {
+            host.say("diff: " + reason);
+        }
+    }
+}
+
+/// The prompt's answer (`GIT_ui_prompt.Receiver`).
+pub void LogMenu.received(str purpose, str text) {
+    if (purpose == "diff") {
+        if (text != "") {
+            show_diff(text);
+        }
+        return;
+    }
+    if (purpose == "author") {
+        host.log_filter.author = text;
+    }
+    if (purpose == "grep") {
+        host.log_filter.grep = text;
+    }
+    if (purpose == "pickaxe") {
+        host.log_filter.pickaxe = text;
+    }
+    if (purpose == "path") {
+        host.log_filter.path = text;
+    }
+    if (purpose == "rev") {
+        str rev = text;
+        if (rev == "") {
+            rev = "HEAD";
+        }
+        match (GIT_revparse.commit_id(host.gitdir, rev)) {
+            case Ok(str ignored): {
+                host.log_filter.rev = rev;
+            }
+            case Err(GIT_revparse.Error error): {
+                host.say("log: " + rev + ": " + error.to_str());
+                return;
+            }
+        }
+    }
+    host.log_limit = GIT_ui_model.LOG_PAGE;
+    host.reload();
+    host.say("log: " + host.log.size().to_str() + " commit(s)");
+}
+
+pub void LogMenu.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    str title = "log";
+    if (!host.log_filter.is_default()) {
+        title = "log  [" + host.log_filter.describe() + "]";
+    }
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey(title, GIT_ui_sequencer.items_of(GIT_ui_core.SCOPE_LOGMENU));
+    which_key.render(buffer, area);
+}
+
+pub List<GIT_ui_core.Hint> LogMenu.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_LOGMENU);
+}
+
+pub void open(GIT_ui_core.Core core) {
+    core.push_overlay(LogMenu(core));
+}

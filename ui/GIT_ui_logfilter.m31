@@ -1,0 +1,182 @@
+// What the History mode's log shows: which revision, filtered by author,
+// message, path or a string whose count a commit changes (git's `-S`), and
+// the graph column. Pure: it reads the repository and returns commits.
+//
+// The matching is by plain substring (git's own options are regular
+// expressions; the fixed-string forms are `--fixed-strings`), case-sensitive
+// as git's are by default. The author is matched against "Name <email>". The
+// path filter keeps the commits whose diff against their first parent touches
+// the path or something below it. A filtered log looks at the newest
+// `SCAN` commits of the revision.
+
+import core.GIT_gitgraph;
+import core.GIT_log;
+import core.GIT_object;
+import core.GIT_pathtree;
+import ui.GIT_ui_model;
+import core.GIT_status;
+
+pub const int SCAN = 2000;
+
+pub type Filter {
+    pub str rev = "HEAD";
+    pub str author = "";
+    pub str grep = "";
+    pub str path = "";
+    pub str pickaxe = "";
+    pub bool is_graph = false;
+}
+
+pub bool Filter.is_filtering() {
+    return author != "" || grep != "" || path != "" || pickaxe != "";
+}
+
+pub bool Filter.is_default() {
+    return rev == "HEAD" && !is_filtering() && !is_graph;
+}
+
+/// "log: dev  author=ann  grep=fix  path=src/  -S=x  graph" for the Commits heading.
+pub str Filter.describe() {
+    List<str> parts = [];
+    if (rev != "HEAD") {
+        parts.push(rev);
+    }
+    if (author != "") {
+        parts.push("author=" + author);
+    }
+    if (grep != "") {
+        parts.push("grep=" + grep);
+    }
+    if (path != "") {
+        parts.push("path=" + path);
+    }
+    if (pickaxe != "") {
+        parts.push("-S" + pickaxe);
+    }
+    if (is_graph) {
+        parts.push("graph");
+    }
+    return parts.join(" ");
+}
+
+str ident_text(GIT_object.Ident who) {
+    return who.name.utf8().or("") + " <" + who.email.utf8().or("") + ">";
+}
+
+int count_of(str haystack, str needle) {
+    if (needle == "") {
+        return 0;
+    }
+    return haystack.split(needle).size() - 1;
+}
+
+int blob_count(str gitdir, Option<str> id, str needle) {
+    match (id) {
+        case Some(str blob_id): {
+            match (GIT_pathtree.blob(gitdir, blob_id)) {
+                case Ok(bytes content): {
+                    return count_of(content.utf8().or(""), needle);
+                }
+                case Err: {
+                }
+            }
+        }
+        case None: {
+        }
+    }
+    return 0;
+}
+
+bool is_under(str path, str prefix) {
+    str base = prefix;
+    while (base.ends_with("/")) {
+        base = base.substr(0, base.size() - 1);
+    }
+    return path == base || path.starts_with(base + "/");
+}
+
+/// Does the commit pass the filters that need its diff (path, -S)?
+bool is_matching_diff(str gitdir, Filter filter, GIT_log.Entry entry) {
+    if (filter.path == "" && filter.pickaxe == "") {
+        return true;
+    }
+    match (GIT_ui_model.commit_changes(gitdir, entry.commit)) {
+        case Ok(List<GIT_ui_model.CommitFileDiff> changes): {
+            bool has_path = filter.path == "";
+            bool has_pickaxe = filter.pickaxe == "";
+            for (GIT_ui_model.CommitFileDiff change in changes) {
+                str path = change.path.utf8().or("");
+                if (filter.path != "" && !is_under(path, filter.path)) {
+                    continue;
+                }
+                has_path = true;
+                if (filter.pickaxe != "" && blob_count(gitdir, change.old_id, filter.pickaxe) != blob_count(gitdir, change.new_id, filter.pickaxe)) {
+                    has_pickaxe = true;
+                }
+            }
+            return has_path && has_pickaxe;
+        }
+        case Err: {
+            return false;
+        }
+    }
+}
+
+/// The log to show: at most `limit` commits of `filter.rev` that pass.
+pub Result<List<GIT_log.Entry>, GIT_log.Error> run(str gitdir, Filter filter, int limit) {
+    if (!filter.is_filtering()) {
+        return GIT_log.walk(gitdir, filter.rev, limit);
+    }
+    int scan = SCAN;
+    if (limit * 20 > scan) {
+        scan = limit * 20;
+    }
+    List<GIT_log.Entry> all = GIT_log.walk(gitdir, filter.rev, scan)?;
+    List<GIT_log.Entry> out = [];
+    for (GIT_log.Entry entry in all) {
+        if (out.size() >= limit) {
+            break;
+        }
+        if (filter.author != "" && !ident_text(entry.commit.author).contains(filter.author)) {
+            continue;
+        }
+        if (filter.grep != "" && !entry.commit.message.utf8().or("").contains(filter.grep)) {
+            continue;
+        }
+        if (is_matching_diff(gitdir, filter, entry)) {
+            out.push(entry);
+        }
+    }
+    return Result<List<GIT_log.Entry>, GIT_log.Error>.Ok(out);
+}
+
+/// Each commit's graph prefix ("* ", "| * ", ...) padded to one width, from git's own
+/// graph state machine. The connector rows between commits are not drawn.
+pub Map<str, str> graph_prefixes(List<GIT_log.Entry> log) {
+    GIT_gitgraph.Graph graph = GIT_gitgraph.open(false);
+    Map<str, str> raw = {};
+    int widest = 0;
+    for (GIT_log.Entry entry in log) {
+        graph.update(entry.id, entry.commit.parents);
+        bool is_found = false;
+        while (!graph.is_commit_finished()) {
+            str line = graph.next_line();
+            if (graph.is_commit_line && !is_found) {
+                is_found = true;
+                raw.set(entry.id, line);
+                if (line.size() > widest) {
+                    widest = line.size();
+                }
+            }
+        }
+    }
+    Map<str, str> out = {};
+    for (GIT_log.Entry entry in log) {
+        str line = raw.get(entry.id).or("");
+        while (line.size() < widest) {
+            line = line + " ";
+        }
+        out.set(entry.id, line);
+    }
+    return out;
+}

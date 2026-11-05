@@ -3,6 +3,20 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.32.0
+
+- **`f` in History: the log menu.** `a` author contains, `g` message contains, `s` `-S` (commits that add or remove a
+  string), `p` path (a file or directory), `r` the log of another branch, tag or commit, `G` the graph column on or
+  off (git's own graph state machine; the commit rows only), `c` clear, `d` diff two refs (`A..B`, `A...B`, or `A`
+  against HEAD) in the read-only view, `D` the commit under the cursor against HEAD. The Commits heading names the
+  filters. Plain substrings, not regular expressions; the newest 2000 commits are searched; the path filter follows
+  each commit's diff against its first parent.
+- `tests/pty_log.py` (22 checks, `tests/test_log.sh`): the commits shown are the ones `git log` lists for each filter,
+  the diff totals are `git diff --numstat`'s.
+- `docs/MGIT-PARITY.md`: the magit manual was read from the magit repository (`docs/magit.org`); rows added for
+  cherries, the references buffer, patches, bundle, wip modes. `scripts/parity_counts.py` counts the matrix.
+- The advertised user agent is `1git/0.32.0`.
+
 ## 0.31.0
 
 - **mgit parity work begins**: `docs/MGIT-PARITY.md` is the matrix of lazygit, magit and neogit against mgit (128 rows:
