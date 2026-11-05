@@ -110,6 +110,7 @@ import ui.GIT_ui_stash;
 import ui.GIT_ui_tags;
 import ui.GIT_ui_logmenu;
 import ui.GIT_ui_reflog;
+import ui.GIT_ui_remotes;
 import ui.GIT_ui_undo;
 import io;
 import os;
@@ -606,7 +607,7 @@ pub TUI_app.Action State.handle_key(term.Code code) {
             is_quit_wanted = false;
             return TUI_app.Action.Quit;
         }
-        if (is_editor_wanted && rebase_edit_path != "") {
+        if (is_editor_wanted && (rebase_edit_path != "" || net_verb != "")) {
             return TUI_app.Action.Quit;
         }
         return action;
@@ -1004,6 +1005,9 @@ TUI_app.Action State.run_outline_command(str cmd, str name) {
     }
     if (cmd == GIT_ui_core.CMD_LOGMENU) {
         GIT_ui_logmenu.open(core());
+    }
+    if (cmd == GIT_ui_core.CMD_REMOTES) {
+        GIT_ui_remotes.open(layer());
     }
     if (cmd == GIT_ui_core.CMD_REFLOG) {
         GIT_ui_reflog.open(core());

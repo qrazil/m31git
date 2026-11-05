@@ -39,6 +39,20 @@ str ref_name(int number) {
     return "stash@{" + number.to_str() + "}";
 }
 
+/// `git stash push --staged`: only the staged changes are stashed; the rest stays.
+pub void push_staged_stash(GIT_ui_core.Core core) {
+    match (GIT_stash.push(core.gitdir, core.worktree, is_staged_only: true)) {
+        case Ok(GIT_stash.Saved saved): {
+            core.log_command("stash push --staged (" + GIT_ui_core.short_id(saved.commit) + ")");
+            core.say("saved " + saved.message + " (staged changes only)");
+            core.reload();
+        }
+        case Err(GIT_stash.Error error): {
+            core.say("stash --staged: " + error.to_str());
+        }
+    }
+}
+
 /// `git stash push`, with `-u`, `-k` and `-m` as asked.
 pub void push_stash(GIT_ui_core.Core core, bool should_include_untracked, bool should_keep_index, str message) {
     match (GIT_stash.push(core.gitdir, core.worktree, should_include_untracked: should_include_untracked, should_keep_index: should_keep_index, message: message)) {
@@ -211,6 +225,9 @@ pub TUI_app.Action StashMenu.handle_key(term.Code code) {
             }
             if (cmd == GIT_ui_core.CMD_STASH_KEEP) {
                 push_stash(host, false, true, "");
+            }
+            if (cmd == GIT_ui_core.CMD_STASH_STAGED) {
+                push_staged_stash(host);
             }
             if (cmd == GIT_ui_core.CMD_STASH_MESSAGE) {
                 host.push_overlay(PromptOverlay(host, "message", 0));

@@ -8,6 +8,8 @@ import core.GIT_config;
 import net.GIT_http_push;
 import net.GIT_gitfetch;
 import net.GIT_gitpush;
+import net.GIT_gitremote;
+import ui.GIT_ui_prompt;
 import io;
 import os;
 import net.GIT_pull;
@@ -254,6 +256,8 @@ pub void RemoteLayer.run_net_now() {
         status = GIT_gitfetch.run_fetch(worktree, [], args);
     } else if (verb == "push") {
         status = GIT_gitpush.run_push(worktree, [], args);
+    } else if (verb == "remote") {
+        status = GIT_gitremote.run_remote(worktree, [], args);
     } else {
         status = 2;
     }
@@ -262,11 +266,15 @@ pub void RemoteLayer.run_net_now() {
     } else {
         io.eprint("mgit: '" + shown + "' failed (exit " + status.to_str() + ")");
     }
-    // Leave the output on screen until Enter, so an error can be read.
-    match (os.run(["sh", "-c", "printf 'press Enter to return to mgit ' >&2; read answer"])) {
-        case Ok(_): {
-        }
-        case Err(_): {
+    // Leave the output on screen until Enter, so an error can be read; a remote
+    // edit that worked has nothing to read.
+    bool is_quiet_edit = status == 0 && verb == "remote" && args.size() > 0 && args[0] != "prune";
+    if (!is_quiet_edit) {
+        match (os.run(["sh", "-c", "printf 'press Enter to return to mgit ' >&2; read answer"])) {
+            case Ok(_): {
+            }
+            case Err(_): {
+            }
         }
     }
     str after = net_after;
@@ -439,6 +447,30 @@ pub TUI_app.Action RemoteOverlay.handle_key(term.Code code) {
             if (cmd == GIT_ui_core.CMD_PUSH_LIBRARY) {
                 host.want_net("push", []);
             }
+            if (cmd == GIT_ui_core.CMD_PUSH_LEASE) {
+                host.want_net("push", ["--force-with-lease"]);
+            }
+            if (cmd == GIT_ui_core.CMD_PUSH_TAGS) {
+                host.want_net("push", ["--tags"]);
+            }
+            if (cmd == GIT_ui_core.CMD_PUSH_OTHER) {
+                GIT_ui_prompt.open(host.core(), this, "push-other", "push the current branch to remote");
+            }
+            if (cmd == GIT_ui_core.CMD_PUSH_DELETE) {
+                GIT_ui_prompt.open(host.core(), this, "push-delete", "DELETE a branch on a remote (remote/branch)");
+            }
+            if (cmd == GIT_ui_core.CMD_FETCH_ALL) {
+                host.want_net("fetch", ["--all"]);
+            }
+            if (cmd == GIT_ui_core.CMD_FETCH_PRUNE) {
+                host.want_net("fetch", ["--prune"]);
+            }
+            if (cmd == GIT_ui_core.CMD_FETCH_TAGS) {
+                host.want_net("fetch", ["--tags"]);
+            }
+            if (cmd == GIT_ui_core.CMD_FETCH_OTHER) {
+                GIT_ui_prompt.open(host.core(), this, "fetch-other", "fetch remote");
+            }
             if (host.is_editor_wanted) {
                 return TUI_app.Action.Quit;
             }
@@ -450,10 +482,37 @@ pub TUI_app.Action RemoteOverlay.handle_key(term.Code code) {
     return TUI_app.Action.Continue;
 }
 
+/// The prompt's answer (`GIT_ui_prompt.Receiver`).
+pub void RemoteOverlay.received(str purpose, str text) {
+    str name = text.trim();
+    if (name == "") {
+        return;
+    }
+    if (purpose == "fetch-other") {
+        host.want_net("fetch", [name]);
+    }
+    if (purpose == "push-other") {
+        str branch = host.current_branch_name();
+        if (branch == "") {
+            host.say("push: HEAD is not on a branch");
+            return;
+        }
+        host.want_net("push", [name, branch]);
+    }
+    if (purpose == "push-delete") {
+        int slash = name.index_of("/").or(-1);
+        if (slash <= 0 || slash >= name.size() - 1) {
+            host.say("push --delete: type remote/branch, e.g. origin/old-topic");
+            return;
+        }
+        host.want_net("push", [name.substr(0, slash), "--delete", name.substr(slash + 1, name.size())]);
+    }
+}
+
 pub void RemoteOverlay.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
-    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("pull", [TUI_menu.Item("p", "pull current branch from origin (fast-forward only)"), TUI_menu.Item("f", "fetch (terminal: progress, credential prompts)"), TUI_menu.Item("g", "pull with git's rules (merge or rebase per config)"), TUI_menu.Item("r", "pull --rebase")]);
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("pull", [TUI_menu.Item("p", "pull current branch from origin (fast-forward only)"), TUI_menu.Item("f", "fetch (terminal: progress, credential prompts)"), TUI_menu.Item("g", "pull with git's rules (merge or rebase per config)"), TUI_menu.Item("r", "pull --rebase"), TUI_menu.Item("a", "fetch every remote"), TUI_menu.Item("x", "fetch --prune"), TUI_menu.Item("t", "fetch --tags"), TUI_menu.Item("o", "fetch a remote you name")]);
     if (is_push) {
-        which_key = TUI_menu.WhichKey("push", [TUI_menu.Item("p", "push current branch to origin (fast-forward only)"), TUI_menu.Item("u", "push and set origin/<branch> as the upstream"), TUI_menu.Item("g", "push with git's rules (terminal: credential prompts)")]);
+        which_key = TUI_menu.WhichKey("push", [TUI_menu.Item("p", "push current branch to origin (fast-forward only)"), TUI_menu.Item("u", "push and set origin/<branch> as the upstream"), TUI_menu.Item("g", "push with git's rules (terminal: credential prompts)"), TUI_menu.Item("f", "force-with-lease push"), TUI_menu.Item("t", "push all tags"), TUI_menu.Item("o", "push to a remote you name"), TUI_menu.Item("d", "delete a branch on a remote")]);
     }
     which_key.render(buffer, area);
 }

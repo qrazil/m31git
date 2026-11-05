@@ -59,6 +59,19 @@ pub void CommitLayer.edit_message() {
                 prefill = prefill + "\n";
             }
         }
+        // after `merge --squash` git commits with `SQUASH_MSG` as the message to edit
+        if (!is_merge && fs.is_present(fs.join(gitdir, "SQUASH_MSG"))) {
+            match (io.read(fs.join(gitdir, "SQUASH_MSG"))) {
+                case Ok(str squashed): {
+                    prefill = squashed;
+                    if (!prefill.ends_with("\n")) {
+                        prefill = prefill + "\n";
+                    }
+                }
+                case Err: {
+                }
+            }
+        }
         match (io.write(commit_message_path, prefill + GIT_ui_model.commit_template())) {
             case Ok: {
             }
@@ -118,6 +131,14 @@ pub void CommitLayer.confirm_abort() {
 }
 
 pub void CommitLayer.abort_commit() {
+    if (fs.is_present(fs.join(gitdir, "SQUASH_MSG"))) {
+        match (fs.remove(fs.join(gitdir, "SQUASH_MSG"))) {
+            case Ok: {
+            }
+            case Err: {
+            }
+        }
+    }
     if (fs.is_present(commit_message_path)) {
         match (fs.remove(commit_message_path)) {
             case Ok: {

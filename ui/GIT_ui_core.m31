@@ -107,6 +107,7 @@ pub const str SCOPE_PULL_ASK = "pull-ask";
 pub const str SCOPE_OVERVIEW = "overview";
 pub const str SCOPE_RESET = "reset";
 pub const str SCOPE_QUICK = "quick";
+pub const str SCOPE_REMOTES = "remotes";
 pub const str SCOPE_LOGMENU = "logmenu";
 pub const str SCOPE_REFLOG = "reflog";
 pub const str CMD_QUIT = "quit";
@@ -185,6 +186,10 @@ pub const str CMD_MOVE_UP = "move-up";
 pub const str CMD_EXTERNAL = "external";
 pub const str CMD_MERGE = "merge";
 pub const str CMD_MERGE_NO_FF = "merge-no-ff";
+pub const str CMD_MERGE_SQUASH = "merge-squash";
+pub const str CMD_MERGE_NO_COMMIT = "merge-no-commit";
+pub const str PICK_MERGE_SQUASH = "merge-squash";
+pub const str PICK_MERGE_NO_COMMIT = "merge-no-commit";
 pub const str CMD_MERGE_FF_ONLY = "merge-ff-only";
 pub const str CMD_MERGE_CONTINUE = "merge-continue";
 pub const str CMD_OURS = "ours";
@@ -247,6 +252,26 @@ pub const str CMD_RESET_MIXED = "reset-mixed";
 pub const str CMD_RESET_HARD = "reset-hard";
 pub const str CMD_DETACH = "detach";
 pub const str CMD_QUICK = "quick";
+pub const str CMD_REMOTES = "remotes";
+pub const str CMD_PUSH_LEASE = "push-lease";
+pub const str CMD_PUSH_TAGS = "push-tags";
+pub const str CMD_PUSH_OTHER = "push-other";
+pub const str CMD_PUSH_DELETE = "push-delete";
+pub const str CMD_FETCH_ALL = "fetch-all";
+pub const str CMD_FETCH_PRUNE = "fetch-prune";
+pub const str CMD_FETCH_TAGS = "fetch-tags";
+pub const str CMD_FETCH_OTHER = "fetch-other";
+pub const str CMD_REMOTE_ADD = "remote-add";
+pub const str CMD_REMOTE_REMOVE = "remote-remove";
+pub const str CMD_REMOTE_RENAME = "remote-rename";
+pub const str CMD_REMOTE_URL = "remote-url";
+pub const str CMD_REMOTE_PRUNE = "remote-prune";
+pub const str CMD_REMOTE_FETCH = "remote-fetch";
+pub const str CMD_TAG_PUSH = "tag-push";
+pub const str CMD_TAG_REMOTE_DELETE = "tag-remote-delete";
+pub const str CMD_BRANCH_UPSTREAM = "branch-upstream";
+pub const str CMD_BRANCH_UNSET_UPSTREAM = "branch-unset-upstream";
+pub const str CMD_STASH_STAGED = "stash-staged";
 pub const str CMD_LOGMENU = "logmenu";
 pub const str CMD_LOG_AUTHOR = "log-author";
 pub const str CMD_LOG_GREP = "log-grep";
@@ -923,6 +948,19 @@ pub void Core.say(str text) {
 
 /// The `Core` itself, for passing to an overlay that holds only a `Core`
 /// (the embedded value is not reachable as a field).
+/// Ask for a library command (`fetch`, `push`, `remote`) to run on the terminal; the
+/// driver hands the terminal over and `RemoteLayer.run_net_now` runs it.
+pub void Core.request_net(str verb, List<str> args) {
+    if (verb != "fetch" && is_blocked_by_sequence("pull")) {
+        return;
+    }
+    net_after = "";
+    net_verb = verb;
+    net_args = args;
+    is_editor_wanted = true;
+    message = verb + ": running on the terminal...";
+}
+
 pub Core Core.core() {
     return this;
 }
@@ -1002,6 +1040,7 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_OUTLINE, CMD_QUICK, ["E"], "edit the commit under the cursor (a menu): reword, edit, drop, squash or fixup into the one before, move up or down, amend it with the staged changes, make a fixup! commit for it", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_REFLOG, ["L"], "the reflog of HEAD: every place HEAD has been; reset to one, check it out or cherry-pick it", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_LOGMENU, ["f"], "the log menu: filter by author, message, path or -S, the log of another revision, the graph column, a diff between two refs", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_REMOTES, ["M"], "the remotes: add, remove, rename, set the URL, prune, fetch", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_JUMP, ["J"], "show or hide the jump list", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_FOCUS, ["w"], "give the jump list the keys, or take them back", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_SEARCH, ["/"], "search the outline and the log (smart-case: lower case ignores case)", "", ""));
@@ -1085,6 +1124,15 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_LOGMENU, CMD_LOG_DIFF, ["d"], "diff two refs: A..B, A...B, or A against HEAD", "d", "diff refs"));
     table.push(Binding(SCOPE_LOGMENU, CMD_LOG_DIFF_HERE, ["D"], "diff the commit under the cursor against HEAD", "D", "diff here"));
     table.push(Binding(SCOPE_LOGMENU, CMD_CLOSE, ["escape"], "close", "esc", "close"));
+    table.push(Binding(SCOPE_REMOTES, CMD_DOWN, ["j", "down"], "next remote", "j/k", "move"));
+    table.push(Binding(SCOPE_REMOTES, CMD_UP, ["k", "up"], "previous remote", "", ""));
+    table.push(Binding(SCOPE_REMOTES, CMD_REMOTE_ADD, ["a"], "add a remote: its name, then its URL (git remote add)", "a", "add"));
+    table.push(Binding(SCOPE_REMOTES, CMD_REMOTE_REMOVE, ["d"], "remove the remote and its remote-tracking branches (asks first)", "d", "remove"));
+    table.push(Binding(SCOPE_REMOTES, CMD_REMOTE_RENAME, ["r"], "rename the remote (git remote rename)", "r", "rename"));
+    table.push(Binding(SCOPE_REMOTES, CMD_REMOTE_URL, ["u"], "set the remote's URL (git remote set-url)", "u", "set url"));
+    table.push(Binding(SCOPE_REMOTES, CMD_REMOTE_PRUNE, ["p"], "prune the remote-tracking branches the remote no longer has, on the terminal", "p", "prune"));
+    table.push(Binding(SCOPE_REMOTES, CMD_REMOTE_FETCH, ["f"], "fetch the remote on the terminal", "f", "fetch"));
+    table.push(Binding(SCOPE_REMOTES, CMD_CLOSE, ["escape", "q"], "close", "q", "close"));
     table.push(Binding(SCOPE_REFLOG, CMD_DOWN, ["j", "down"], "next entry", "j/k", "move"));
     table.push(Binding(SCOPE_REFLOG, CMD_UP, ["k", "up"], "previous entry", "", ""));
     table.push(Binding(SCOPE_REFLOG, CMD_REFLOG_RESET, ["enter", "G"], "reset the branch to the entry (soft, mixed, hard)", "enter", "reset"));
@@ -1095,21 +1143,32 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_BRANCH, CMD_PICK_BRANCH, ["/"], "check out a branch picked by typing part of its name", "/", "pick"));
     table.push(Binding(SCOPE_BRANCH, CMD_NEW_BRANCH, ["n"], "new branch from HEAD: name it in $EDITOR, then switch to it", "n", "new"));
     table.push(Binding(SCOPE_BRANCH, CMD_REMOTE_BRANCH, ["r"], "check out a remote branch: a local branch tracking it is created", "r", "remote"));
+    table.push(Binding(SCOPE_BRANCH, CMD_BRANCH_UPSTREAM, ["u"], "set the upstream of the current branch: type remote/branch (git branch --set-upstream-to)", "u", "set upstream"));
+    table.push(Binding(SCOPE_BRANCH, CMD_BRANCH_UNSET_UPSTREAM, ["U"], "unset the upstream of the current branch (git branch --unset-upstream)", "U", "unset upstream"));
     table.push(Binding(SCOPE_BRANCH, CMD_ABORT, ["a", "escape"], "abort", "a", "abort"));
     // The push and pull overlays.
     table.push(Binding(SCOPE_PUSH, CMD_PUSH, ["p"], "push the current branch to origin", "p", "push"));
     table.push(Binding(SCOPE_PUSH, CMD_PUSH_UPSTREAM, ["u"], "push and set the upstream (git push -u): branch.<n>.remote and .merge", "u", "push -u"));
     table.push(Binding(SCOPE_PUSH, CMD_PUSH_LIBRARY, ["g"], "push with git's rules on the terminal: upstream remote, credential helpers and prompts, any branch state it allows", "g", "push (git rules)"));
+    table.push(Binding(SCOPE_PUSH, CMD_PUSH_LEASE, ["f"], "force-with-lease push on the terminal: overwrites the remote branch only if it is still what you last fetched", "f", "force-with-lease"));
+    table.push(Binding(SCOPE_PUSH, CMD_PUSH_TAGS, ["t"], "push all tags on the terminal", "t", "tags"));
+    table.push(Binding(SCOPE_PUSH, CMD_PUSH_OTHER, ["o"], "push the current branch to a remote you name", "o", "other remote"));
+    table.push(Binding(SCOPE_PUSH, CMD_PUSH_DELETE, ["d"], "delete a branch on a remote: type remote/branch", "d", "delete remote branch"));
     table.push(Binding(SCOPE_PUSH, CMD_CLOSE, ["escape"], "close", "esc", "close"));
     table.push(Binding(SCOPE_PULL, CMD_PULL, ["p"], "pull the current branch from origin", "p", "pull"));
     table.push(Binding(SCOPE_PULL, CMD_FETCH, ["f"], "fetch from the upstream remote (origin by default), progress on the terminal", "f", "fetch"));
     table.push(Binding(SCOPE_PULL, CMD_PULL_LIBRARY, ["g"], "pull with git's rules on the terminal: merge or rebase per pull.rebase, credential prompts", "g", "pull (git rules)"));
     table.push(Binding(SCOPE_PULL, CMD_PULL_REBASE, ["r"], "pull --rebase on the terminal", "r", "pull --rebase"));
+    table.push(Binding(SCOPE_PULL, CMD_FETCH_ALL, ["a"], "fetch every remote (git fetch --all)", "a", "fetch all"));
+    table.push(Binding(SCOPE_PULL, CMD_FETCH_PRUNE, ["x"], "fetch and prune the remote-tracking branches that are gone (git fetch --prune)", "x", "fetch --prune"));
+    table.push(Binding(SCOPE_PULL, CMD_FETCH_TAGS, ["t"], "fetch all tags (git fetch --tags)", "t", "fetch --tags"));
+    table.push(Binding(SCOPE_PULL, CMD_FETCH_OTHER, ["o"], "fetch a remote you name", "o", "fetch a remote"));
     table.push(Binding(SCOPE_PULL, CMD_CLOSE, ["escape"], "close", "esc", "close"));
     // The discard confirmation: "y" and anything else.
     table.push(Binding(SCOPE_STASH, CMD_STASH_PUSH, ["z"], "push: stash the changes to tracked files", "z", "push"));
     table.push(Binding(SCOPE_STASH, CMD_STASH_UNTRACKED, ["u"], "push, untracked files too", "u", "+untracked"));
     table.push(Binding(SCOPE_STASH, CMD_STASH_KEEP, ["k"], "push, but keep the staged changes in the index", "", ""));
+    table.push(Binding(SCOPE_STASH, CMD_STASH_STAGED, ["s"], "push only the staged changes (git stash push --staged); what is not staged stays", "s", "staged only"));
     table.push(Binding(SCOPE_STASH, CMD_STASH_MESSAGE, ["m"], "push with a message you type", "", ""));
     table.push(Binding(SCOPE_STASH, CMD_STASH_POP, ["p"], "pop: apply the stash and drop it", "p", "pop"));
     table.push(Binding(SCOPE_STASH, CMD_STASH_APPLY, ["a"], "apply the stash, keeping it", "a", "apply"));
@@ -1152,6 +1211,8 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_MERGE, CMD_MERGE, ["f"], "merge a branch you pick: fast-forward when it can", "f", "ff"));
     table.push(Binding(SCOPE_MERGE, CMD_MERGE_NO_FF, ["n"], "merge a branch you pick, always with a merge commit (--no-ff)", "n", "no-ff"));
     table.push(Binding(SCOPE_MERGE, CMD_MERGE_FF_ONLY, ["o"], "merge a branch you pick only if it fast-forwards (--ff-only)", "o", "ff-only"));
+    table.push(Binding(SCOPE_MERGE, CMD_MERGE_SQUASH, ["s"], "squash-merge a branch you pick: its changes are staged and you commit them", "s", "squash"));
+    table.push(Binding(SCOPE_MERGE, CMD_MERGE_NO_COMMIT, ["x"], "merge a branch you pick but stop before the commit (--no-commit)", "x", "no-commit"));
     table.push(Binding(SCOPE_MERGE, CMD_MERGE_CONTINUE, ["c"], "continue the merge: commit it once nothing is unmerged", "c", "continue"));
     table.push(Binding(SCOPE_MERGE, CMD_ABORT, ["a"], "abort the merge under way (asks first)", "a", "abort"));
     table.push(Binding(SCOPE_MERGE, CMD_CLOSE, ["escape"], "close", "esc", "close"));
@@ -1250,6 +1311,8 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_TAGS, CMD_UP, ["k", "up"], "previous tag", "", ""));
     table.push(Binding(SCOPE_TAGS, CMD_NEW, ["n"], "new lightweight tag at HEAD (or the commit under the outline cursor)", "n", "new"));
     table.push(Binding(SCOPE_TAGS, CMD_ANNOTATE, ["a"], "new annotated tag: name, then message", "a", "annotate"));
+    table.push(Binding(SCOPE_TAGS, CMD_TAG_PUSH, ["P"], "push the tag to a remote on the terminal (origin, or the remote you type)", "P", "push"));
+    table.push(Binding(SCOPE_TAGS, CMD_TAG_REMOTE_DELETE, ["X"], "delete the tag on a remote (origin, or the remote you type)", "X", "delete remote"));
     table.push(Binding(SCOPE_TAGS, CMD_DELETE, ["d"], "delete the tag under the cursor (asks first)", "d", "delete"));
     table.push(Binding(SCOPE_TAGS, CMD_CLOSE, ["escape", "q"], "close", "q", "close"));
     table.push(Binding(SCOPE_PROMPT, CMD_SUBMIT, ["enter"], "accept what is typed", "enter", "ok"));
@@ -1412,6 +1475,9 @@ pub str scope_title(str scope) {
     if (scope == SCOPE_LOGMENU) {
         return "log menu (History, f)";
     }
+    if (scope == SCOPE_REMOTES) {
+        return "remotes (Branches, M)";
+    }
     if (scope == SCOPE_QUICK) {
         return "commit edit menu (History, E)";
     }
@@ -1423,7 +1489,7 @@ pub str scope_title(str scope) {
 
 /// Every scope, in the order the help overlay lists them.
 pub List<str> all_scopes() {
-    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET, SCOPE_QUICK, SCOPE_REFLOG, SCOPE_LOGMENU];
+    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET, SCOPE_QUICK, SCOPE_REFLOG, SCOPE_LOGMENU, SCOPE_REMOTES];
 }
 
 // --- the overlay stack and the command log -------------------------------------

@@ -187,16 +187,17 @@ Local branches, the current one starred, with ahead and behind.
 | key | does |
 |---|---|
 | `Enter` | switch to the branch under the cursor (refused with the reason when a file is in the way) |
-| `b` | the branch menu: `c` switch, `/` pick by typing, `n` new from HEAD, `r` a remote branch (a tracking branch is made) |
-| `m` | the merge menu: fast-forward when possible, always a merge commit, fast-forward only; continue or abort while merging |
+| `b` | the branch menu: `c` switch, `/` pick by typing, `n` new from HEAD, `r` a remote branch (a tracking branch is made), `u` set the upstream, `U` unset it |
+| `m` | the merge menu: fast-forward when possible, always a merge commit, fast-forward only, `s` squash, `x` stop before the commit; continue or abort while merging |
 | `r` | the rebase menu (as in History) |
 | `A` / `V` | cherry-pick / revert the branch's tip |
-| `F` | the pull menu: pull, fetch, pull on the terminal with git's rules, pull with rebase |
-| `P` | the push menu: push, push and set the upstream, push on the terminal |
-| `T` | tags: list, create (lightweight or annotated), delete |
+| `F` | the pull menu: pull, fetch, pull on the terminal with git's rules, pull with rebase; `a` fetch all, `x` fetch --prune, `t` fetch --tags, `o` fetch a remote |
+| `P` | the push menu: push, push and set the upstream, push on the terminal; `f` force-with-lease, `t` tags, `o` another remote, `d` delete a remote branch |
+| `T` | tags: list, create (lightweight or annotated), delete; `P` push a tag, `X` delete it on a remote |
 | `D` | delete the branch under the cursor if it is merged, as `git branch -d` does; otherwise refused, saying into what it is not merged |
 | `X` | force-delete it (`git branch -D`), after a question that says whether it is merged and how to get it back (`git branch NAME <old tip>`) |
 | `e` | rename it (`git branch -m`): a prompt starting from the current name |
+| `M` | the remotes: `a` add, `d` remove, `r` rename, `u` set url, `p` prune, `f` fetch |
 
 The three are in the help (`?`) and the palette, not the hint row, which is
 already full. What they refuse, and why:
@@ -224,7 +225,7 @@ The stashes, newest first (the section is there even when empty).
 
 | key | does |
 |---|---|
-| `z` | the stash menu: push, with untracked files, keeping the index, with a message; pop, apply, apply with `--index`, drop (asks first), branch from the stash, list |
+| `z` | the stash menu: push, with untracked files, keeping the index, only the staged changes (`s`), with a message; pop, apply, apply with `--index`, drop (asks first), branch from the stash, list |
 | `Enter` on a stash | the stash list over that stash, with its diff beside it (`p` pop, `a` apply, `d` drop, `D` side-by-side) |
 
 ## Flows: merge, cherry-pick, revert, rebase

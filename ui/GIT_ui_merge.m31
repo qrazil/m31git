@@ -18,6 +18,12 @@
 // calls `launch_resolve_editor`).
 
 import fs;
+import core.GIT_gitcommon;
+import core.GIT_gitwrite;
+import core.GIT_graph;
+import core.GIT_object;
+import core.GIT_refs;
+import core.GIT_revparse;
 import diff.GIT_diff3;
 import diff.GIT_merge;
 import core.GIT_status;
@@ -88,6 +94,20 @@ pub void MergeLayer.settle_merge_picks() {
         case None: {
         }
     }
+    match (take_pick(GIT_ui_core.PICK_MERGE_SQUASH)) {
+        case Some(str name): {
+            start_merge(name, GIT_merge.FastForward.Allow, kind: "squash");
+        }
+        case None: {
+        }
+    }
+    match (take_pick(GIT_ui_core.PICK_MERGE_NO_COMMIT)) {
+        case Some(str name): {
+            start_merge(name, GIT_merge.FastForward.Never, kind: "no-commit");
+        }
+        case None: {
+        }
+    }
     match (take_pick(GIT_ui_core.PICK_MERGE_FF_ONLY)) {
         case Some(str name): {
             start_merge(name, GIT_merge.FastForward.Only);
@@ -99,9 +119,37 @@ pub void MergeLayer.settle_merge_picks() {
 
 /// `git merge [--no-ff | --ff-only] <spec>`: `spec` is a branch, `origin/main`,
 /// a tag or a commit id. The outcome is the status line.
-pub void MergeLayer.start_merge(str spec, GIT_merge.FastForward fast_forward) {
+pub void MergeLayer.start_merge(str spec, GIT_merge.FastForward fast_forward, str kind = "") {
     GIT_merge.StartOpts opts = GIT_merge.StartOpts(fast_forward: fast_forward, style: GIT_merge.configured_style(gitdir));
     str flag = "";
+    if (kind == "squash") {
+        opts.is_squash = true;
+        opts.should_commit = false;
+        flag = " --squash";
+        str ours = "";
+        match (GIT_refs.rev_parse(gitdir, "HEAD")) {
+            case Ok(str found): {
+                ours = found;
+            }
+            case Err: {
+                message = "merge --squash: HEAD has no commits yet";
+                return;
+            }
+        }
+        match (GIT_revparse.commit_id(gitdir, spec)) {
+            case Ok(str theirs): {
+                opts.squash_text = squash_text(gitdir, ours, theirs);
+            }
+            case Err(_): {
+                message = "merge --squash: " + spec + " is not something we can merge";
+                return;
+            }
+        }
+    }
+    if (kind == "no-commit") {
+        opts.should_commit = false;
+        flag = " --no-commit";
+    }
     if (fast_forward.eq(GIT_merge.FastForward.Never)) {
         flag = " --no-ff";
     }
@@ -283,7 +331,48 @@ pub void MergeLayer.launch_resolve_editor() {
     }
 }
 
+/// `SQUASH_MSG`: git's text for `merge --squash`, each commit of `ours..theirs` newest first.
+str squash_text(str gitdir, str ours, str theirs) {
+    List<str> ids = [];
+    match (GIT_graph.rev_list(gitdir, [theirs], [ours])) {
+        case Ok(List<str> found): {
+            ids = found;
+        }
+        case Err(_): {
+        }
+    }
+    str text = "Squashed commit of the following:\n";
+    for (str id in ids) {
+        match (GIT_merge.read_commit(gitdir, id)) {
+            case Ok(GIT_object.Commit commit): {
+                if (commit.parents.size() > 1) {
+                    continue;
+                }
+                text = text + "\ncommit " + id + "\n";
+                text = text + "Author: " + GIT_gitwrite.ident_text(commit.author) + "\n";
+                text = text + "Date:   " + GIT_gitcommon.format_date(commit.author.when, commit.author.offset, "default") + "\n\n";
+                List<str> lines = commit.message.utf8().or("").split("\n");
+                if (lines.size() > 0 && lines[lines.size() - 1] == "") {
+                    lines.pop();
+                }
+                for (str line in lines) {
+                    text = text + "    " + line + "\n";
+                }
+            }
+            case Err(_): {
+            }
+        }
+    }
+    return text;
+}
+
 str describe(str spec, GIT_merge.Report report) {
+    if (report.is_squashed) {
+        if (report.conflicts.size() > 0) {
+            return "squash-merging " + spec + ": " + report.conflicts.size().to_str() + " path(s) conflict -- Enter on one to resolve, then commit";
+        }
+        return "squashed " + spec + " into the index and files; c commits it";
+    }
     if (report.ending.eq(GIT_merge.Ending.UpToDate)) {
         return "merge " + spec + ": already up to date";
     }
@@ -330,6 +419,12 @@ pub TUI_app.Action MergeMenu.handle_key(term.Code code) {
             if (cmd == GIT_ui_core.CMD_MERGE_FF_ONLY) {
                 host.open_merge_picker(GIT_ui_core.PICK_MERGE_FF_ONLY, "merge a branch (fast-forward only)");
             }
+            if (cmd == GIT_ui_core.CMD_MERGE_SQUASH) {
+                host.open_merge_picker(GIT_ui_core.PICK_MERGE_SQUASH, "squash-merge a branch (changes left staged)");
+            }
+            if (cmd == GIT_ui_core.CMD_MERGE_NO_COMMIT) {
+                host.open_merge_picker(GIT_ui_core.PICK_MERGE_NO_COMMIT, "merge a branch (stop before the commit)");
+            }
             if (cmd == GIT_ui_core.CMD_MERGE_CONTINUE) {
                 host.merge_continue();
             }
@@ -345,7 +440,7 @@ pub TUI_app.Action MergeMenu.handle_key(term.Code code) {
 }
 
 pub void MergeMenu.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
-    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("merge", [TUI_menu.Item("f", "merge a branch you pick (fast-forward when it can)"), TUI_menu.Item("n", "merge a branch you pick, always with a merge commit"), TUI_menu.Item("o", "merge a branch you pick only if it fast-forwards"), TUI_menu.Item("c", "continue the merge under way"), TUI_menu.Item("a", "abort the merge under way"), TUI_menu.Item("esc", "close")]);
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("merge", [TUI_menu.Item("f", "merge a branch you pick (fast-forward when it can)"), TUI_menu.Item("n", "merge a branch you pick, always with a merge commit"), TUI_menu.Item("o", "merge a branch you pick only if it fast-forwards"), TUI_menu.Item("s", "squash-merge a branch: its changes are staged, you commit"), TUI_menu.Item("x", "merge a branch but stop before the commit"), TUI_menu.Item("c", "continue the merge under way"), TUI_menu.Item("a", "abort the merge under way"), TUI_menu.Item("esc", "close")]);
     which_key.render(buffer, area);
 }
 

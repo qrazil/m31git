@@ -49,6 +49,12 @@ pub TUI_app.Action TagsOverlay.handle_key(term.Code code) {
             if (cmd == GIT_ui_core.CMD_ANNOTATE) {
                 GIT_ui_prompt.open(host, this, "annotate-name", "new annotated tag at " + target_label);
             }
+            if (cmd == GIT_ui_core.CMD_TAG_PUSH && tags.size() > 0) {
+                GIT_ui_prompt.open_with(host, this, "tag-push", "push tag " + tags[selected].name + " to remote", "origin");
+            }
+            if (cmd == GIT_ui_core.CMD_TAG_REMOTE_DELETE && tags.size() > 0) {
+                GIT_ui_prompt.open_with(host, this, "tag-remote-delete", "DELETE tag " + tags[selected].name + " on remote", "origin");
+            }
             if (cmd == GIT_ui_core.CMD_DELETE && tags.size() > 0) {
                 GIT_ui_prompt.open(host, this, "delete", "delete tag " + tags[selected].name + "? type y");
             }
@@ -93,6 +99,14 @@ pub void TagsOverlay.received(str purpose, str text) {
                 tell("tag " + pending_name + ": " + error.to_str());
             }
         }
+    }
+    if (purpose == "tag-push" && tags.size() > 0 && text != "") {
+        host.request_net("push", [text, "refs/tags/" + tags[selected].name]);
+        return;
+    }
+    if (purpose == "tag-remote-delete" && tags.size() > 0 && text != "") {
+        host.request_net("push", [text, "--delete", "refs/tags/" + tags[selected].name]);
+        return;
     }
     if (purpose == "delete") {
         if (text != "y" || tags.size() == 0) {

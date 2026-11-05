@@ -1,0 +1,161 @@
+// `M` in Branches: the remotes. A list of every `remote.<name>` with its URL, and
+//   a add (name, then URL)   d remove (asks)   r rename   u set the URL
+//   p prune (network, on the terminal)   f fetch it (network, on the terminal)
+// The changes are `git remote add | remove | rename | set-url | prune` run by the
+// library's own `remote` command (`GIT_gitremote`), so git's rules apply: a
+// remove deletes the remote-tracking branches and `branch.*` settings of the
+// remote, a rename moves them.
+
+import core.GIT_config;
+import ui.GIT_ui_core;
+import ui.GIT_ui_panel;
+import ui.GIT_ui_prompt;
+import ui.GIT_ui_remote;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+
+type RemotesOverlay {
+    GIT_ui_remote.RemoteLayer host;
+    List<str> names = [];
+    List<str> urls = [];
+    int selected = 0;
+    int offset = 0;
+    // the name typed for `a`, while its URL is asked
+    str pending = "";
+}
+
+void RemotesOverlay.load() {
+    names = [];
+    urls = [];
+    GIT_config.Config config = GIT_config.effective(host.gitdir);
+    for (str section in config.sections()) {
+        if (section.starts_with("remote.")) {
+            str name = section.substr(7, section.size());
+            names.push(name);
+            urls.push(config.get("remote", name, "url").or("(no url)"));
+        }
+    }
+    if (selected >= names.size()) {
+        selected = names.size() - 1;
+    }
+    if (selected < 0) {
+        selected = 0;
+    }
+}
+
+pub TUI_app.Action RemotesOverlay.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_REMOTES, code)) {
+        case Some(str cmd): {
+            load();
+            if (cmd == GIT_ui_core.CMD_CLOSE) {
+                host.pop_overlay();
+            }
+            if (cmd == GIT_ui_core.CMD_DOWN && selected < names.size() - 1) {
+                selected = selected + 1;
+            }
+            if (cmd == GIT_ui_core.CMD_UP && selected > 0) {
+                selected = selected - 1;
+            }
+            if (cmd == GIT_ui_core.CMD_REMOTE_ADD) {
+                GIT_ui_prompt.open(host.core(), this, "add-name", "new remote's name");
+            }
+            if (names.size() > 0) {
+                str name = names[selected];
+                if (cmd == GIT_ui_core.CMD_REMOTE_REMOVE) {
+                    GIT_ui_prompt.open(host.core(), this, "remove", "remove remote " + name + " and its remote-tracking branches? type y");
+                }
+                if (cmd == GIT_ui_core.CMD_REMOTE_RENAME) {
+                    GIT_ui_prompt.open(host.core(), this, "rename", "rename " + name + " to");
+                }
+                if (cmd == GIT_ui_core.CMD_REMOTE_URL) {
+                    GIT_ui_prompt.open(host.core(), this, "url", "URL of " + name);
+                }
+                if (cmd == GIT_ui_core.CMD_REMOTE_PRUNE) {
+                    host.want_net("remote", ["prune", name]);
+                }
+                if (cmd == GIT_ui_core.CMD_REMOTE_FETCH) {
+                    host.want_net("fetch", [name]);
+                }
+            }
+            if (host.is_editor_wanted) {
+                return TUI_app.Action.Quit;
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+/// The prompt's answer (`GIT_ui_prompt.Receiver`).
+pub void RemotesOverlay.received(str purpose, str text) {
+    str answer = text.trim();
+    load();
+    if (purpose == "add-name") {
+        if (answer == "") {
+            return;
+        }
+        pending = answer;
+        GIT_ui_prompt.open(host.core(), this, "add-url", "URL of " + answer);
+        return;
+    }
+    if (purpose == "add-url" && answer != "" && pending != "") {
+        str name = pending;
+        pending = "";
+        host.want_net("remote", ["add", name, answer]);
+        return;
+    }
+    if (names.size() == 0) {
+        return;
+    }
+    str current = names[selected];
+    if (purpose == "remove") {
+        if (answer == "y") {
+            host.want_net("remote", ["remove", current]);
+        } else {
+            host.say("remote: not removed");
+        }
+    }
+    if (purpose == "rename" && answer != "") {
+        host.want_net("remote", ["rename", current, answer]);
+    }
+    if (purpose == "url" && answer != "") {
+        host.want_net("remote", ["set-url", current, answer]);
+    }
+}
+
+pub void RemotesOverlay.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    load();
+    TUI_geometry.Rect inner = GIT_ui_panel.frame(buffer, area, "remotes (" + names.size().to_str() + ")");
+    if (inner.is_empty()) {
+        return;
+    }
+    if (selected < offset) {
+        offset = selected;
+    }
+    if (selected >= offset + inner.height) {
+        offset = selected - inner.height + 1;
+    }
+    offset = GIT_ui_panel.clamp(offset, names.size(), inner.height);
+    List<str> text = [];
+    for (int index in 0 .. names.size()) {
+        text.push(names[index] + "  " + urls[index]);
+    }
+    if (text.size() == 0) {
+        text = ["(no remotes: a adds one)"];
+    }
+    GIT_ui_panel.draw_lines(buffer, inner, text, offset, selected);
+}
+
+pub List<GIT_ui_core.Hint> RemotesOverlay.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_REMOTES);
+}
+
+pub void open(GIT_ui_remote.RemoteLayer host) {
+    RemotesOverlay overlay = RemotesOverlay(host);
+    overlay.load();
+    host.push_overlay(overlay);
+}

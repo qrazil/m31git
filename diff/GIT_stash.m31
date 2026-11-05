@@ -639,7 +639,7 @@ GIT_object.Commit stash_commit(str tree, List<str> parents, GIT_object.Ident aut
 /// Save the work tree and index as a stash: the W commit goes on `refs/stash`
 /// and its reflog, and the work tree and index go back to HEAD (the index and
 /// files of the index with `keep_index`). See the module header.
-pub Result<Saved, Error> push(str gitdir, str worktree, bool should_include_untracked = false, bool should_keep_index = false, str message = "", bool should_store = true, bool is_create_only = false) {
+pub Result<Saved, Error> push(str gitdir, str worktree, bool should_include_untracked = false, bool should_keep_index = false, str message = "", bool should_store = true, bool is_create_only = false, bool is_staged_only = false) {
     HeadInfo head = head_info(gitdir)?;
     GIT_index.Index index = read_index(gitdir)?;
     for (GIT_index.Entry entry in index.entries) {
@@ -678,6 +678,39 @@ pub Result<Saved, Error> push(str gitdir, str worktree, bool should_include_untr
         if (!changed.contains(path)) {
             changed.set(path, GIT_status.Change.Modified);
         }
+    }
+    if (is_staged_only) {
+        // `stash push --staged`: only the index goes in; those changes then leave
+        // the files and the index, and what was not staged stays as it is
+        if (status.staged.size() == 0) {
+            return Result<Saved, Error>.Err(Error.NoChanges);
+        }
+        for (GIT_status.Delta delta in status.staged) {
+            for (GIT_status.Delta other in status.unstaged) {
+                if (other.path == delta.path) {
+                    return Result<Saved, Error>.Err(Error.Failed(delta.path.utf8().or("") + " has staged and unstaged changes: stash them with a plain push, or unstage one kind first"));
+                }
+            }
+        }
+        str staged_tree = tree_of_entries(gitdir, index.entries)?;
+        GIT_object.Ident staged_author = author_ident(gitdir);
+        GIT_object.Ident staged_committer = GIT_reflog.default_ident(gitdir);
+        str staged_index = put_commit(gitdir, stash_commit(staged_tree, [head.id], staged_author, staged_committer, "index on " + head.base_text + "\n"))?;
+        str staged_text = "WIP on " + head.base_text;
+        if (message != "") {
+            staged_text = "On " + head.branch + ": " + message;
+        }
+        str staged_commit = put_commit(gitdir, stash_commit(staged_tree, [head.id, staged_index], staged_author, staged_committer, staged_text))?;
+        put_on_stack(gitdir, staged_commit, staged_text)?;
+        GIT_index.Index fresh_index = read_index(gitdir)?;
+        match (GIT_checkout.apply_tree_diff(gitdir, worktree, staged_tree, head.tree, fresh_index)) {
+            case Ok: {
+            }
+            case Err(GIT_checkout.Error error): {
+                return Result<Saved, Error>.Err(from_checkout(error));
+            }
+        }
+        return Result<Saved, Error>.Ok(Saved(staged_commit, staged_text, 0));
     }
     if (status.staged.size() == 0 && changed.keys().size() == 0 && untracked.size() == 0) {
         return Result<Saved, Error>.Err(Error.NoChanges);

@@ -3,6 +3,23 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.33.0
+
+- **Remotes.** `M` in Branches lists the remotes: `a` add (name, URL), `d` remove (asks), `r` rename, `u` set the URL,
+  `p` prune, `f` fetch. They run the library's own `git remote` code, so git's rules apply (a remove takes the
+  remote-tracking branches and `branch.*` settings with it).
+- **Push menu** (`P`): `f` force-with-lease, `t` tags, `o` another remote, `d` delete a branch on a remote (type
+  `remote/branch`). **Fetch** (`F`): `a` all remotes, `x` prune, `t` tags, `o` a named remote. **Tags** (`T`): `P` push
+  the tag, `X` delete it on a remote. All run on the terminal like the existing fetch and push.
+- **Upstream**: `b u` sets it (`remote/branch`, which must exist), `b U` unsets it.
+- **Merge**: `m s` squash merge (the changes are staged; the Commit mode starts from `SQUASH_MSG` and removes it
+  afterwards), `m x` merge but stop before the commit (`m c` finishes it).
+- **Stash**: `z s` stashes only the staged changes (`git stash push --staged`); a file with both staged and unstaged
+  changes is refused with a message. `GIT_stash.push` has a new last parameter `is_staged_only` (additive).
+- `tests/pty_local.py` and `tests/pty_remotes.py` (`tests/test_remotes.sh`): every action compared with real git on
+  a twin repository, the network ones against a local `git http-backend`.
+- The advertised user agent is `1git/0.33.0`.
+
 ## 0.32.0
 
 - **`f` in History: the log menu.** `a` author contains, `g` message contains, `s` `-S` (commits that add or remove a

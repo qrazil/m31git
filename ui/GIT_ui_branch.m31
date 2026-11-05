@@ -13,6 +13,7 @@ import ui.GIT_ui_commit;
 import ui.GIT_ui_core;
 import ui.GIT_ui_model;
 import ui.GIT_ui_picker;
+import ui.GIT_ui_prompt;
 import io;
 import os;
 import term;
@@ -32,6 +33,61 @@ pub void BranchLayer.open_branch() {
         return;
     }
     push_overlay(BranchOverlay(this));
+}
+
+/// The branch HEAD is on, "" when detached or unborn.
+pub str BranchLayer.branch_in_use() {
+    for (GIT_ui_model.BranchRow branch_row in branch_rows) {
+        if (branch_row.branch.is_current) {
+            return branch_row.branch.name;
+        }
+    }
+    return "";
+}
+
+/// `b u`: `git branch --set-upstream-to=<remote>/<branch>` for the current branch.
+pub void BranchLayer.set_upstream_to(str spec) {
+    str branch = branch_in_use();
+    int slash = spec.index_of("/").or(-1);
+    if (branch == "" || slash <= 0 || slash >= spec.size() - 1) {
+        message = "upstream: type remote/branch, e.g. origin/main";
+        return;
+    }
+    str remote = spec.substr(0, slash);
+    str name = spec.substr(slash + 1, spec.size());
+    if (!GIT_refs.has_ref(gitdir, "refs/remotes/" + spec)) {
+        message = "upstream: there is no remote-tracking branch " + spec + " (fetch first: F, f)";
+        return;
+    }
+    match (GIT_branches.set_upstream(gitdir, branch, remote, "refs/heads/" + name)) {
+        case Ok(_): {
+            log_command("branch --set-upstream-to=" + spec + " " + branch);
+            message = branch + " now tracks " + spec;
+        }
+        case Err(GIT_branches.Error error): {
+            message = "upstream: " + error.to_str();
+        }
+    }
+    reload();
+}
+
+/// `b U`: `git branch --unset-upstream`.
+pub void BranchLayer.unset_upstream_now() {
+    str branch = branch_in_use();
+    if (branch == "") {
+        message = "upstream: HEAD is not on a branch";
+        return;
+    }
+    match (GIT_branches.unset_upstream(gitdir, branch)) {
+        case Ok(_): {
+            log_command("branch --unset-upstream " + branch);
+            message = branch + " has no upstream now";
+        }
+        case Err(GIT_branches.Error error): {
+            message = "upstream: " + error.to_str();
+        }
+    }
+    reload();
 }
 
 /// `b`, then `/`: pick the branch to check out by typing part of its name.
@@ -293,6 +349,16 @@ pub TUI_app.Action BranchOverlay.handle_key(term.Code code) {
             if (cmd == GIT_ui_core.CMD_REMOTE_BRANCH) {
                 host.open_remote_picker();
             }
+            if (cmd == GIT_ui_core.CMD_BRANCH_UPSTREAM) {
+                if (host.branch_in_use() == "") {
+                    host.say("upstream: HEAD is not on a branch");
+                } else {
+                    GIT_ui_prompt.open(host.core(), this, "upstream", "set upstream of " + host.branch_in_use() + " to (remote/branch)");
+                }
+            }
+            if (cmd == GIT_ui_core.CMD_BRANCH_UNSET_UPSTREAM) {
+                host.unset_upstream_now();
+            }
             if (cmd == GIT_ui_core.CMD_NEW_BRANCH) {
                 host.new_branch();
                 if (host.is_editor_wanted) {
@@ -307,8 +373,15 @@ pub TUI_app.Action BranchOverlay.handle_key(term.Code code) {
     return TUI_app.Action.Continue;
 }
 
+/// The prompt's answer (`GIT_ui_prompt.Receiver`).
+pub void BranchOverlay.received(str purpose, str text) {
+    if (purpose == "upstream") {
+        host.set_upstream_to(text.trim());
+    }
+}
+
 pub void BranchOverlay.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
-    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("branch", [TUI_menu.Item("c", "check out the branch under the cursor"), TUI_menu.Item("/", "check out a branch picked by typing part of its name"), TUI_menu.Item("r", "check out a remote branch: creates a local branch tracking it"), TUI_menu.Item("n", "new branch from HEAD: name it in $EDITOR, then switch to it"), TUI_menu.Item("a", "abort")]);
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("branch", [TUI_menu.Item("c", "check out the branch under the cursor"), TUI_menu.Item("/", "check out a branch picked by typing part of its name"), TUI_menu.Item("r", "check out a remote branch: creates a local branch tracking it"), TUI_menu.Item("n", "new branch from HEAD: name it in $EDITOR, then switch to it"), TUI_menu.Item("u", "set the current branch's upstream to a remote branch you type"), TUI_menu.Item("U", "unset the current branch's upstream"), TUI_menu.Item("a", "abort")]);
     which_key.render(buffer, area);
 }
 

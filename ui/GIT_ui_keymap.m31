@@ -242,6 +242,7 @@ pub List<Entry> entries() {
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_BRANCH_DELETE, "delete the branch (refused when unmerged)", "Branch", 0, when: "idle"));
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_BRANCH_FORCE_DELETE, "force-delete the branch (asks first)", "Branch", 0, when: "idle"));
     table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_BRANCH_RENAME, "rename the branch", "Branch", 0, when: "idle"));
+    table.push(row("branches", VIEW_DOC, scope_outline, GIT_ui_core.CMD_REMOTES, "remotes: add, remove, rename, set url, prune, fetch", "Sync", 0));
     // --- Stash -------------------------------------------------------------------
     table.push(row("stash", VIEW_DOC, scope_outline, GIT_ui_core.CMD_STASH, "stash menu", "Stash", 1));
     table.push(row("stash", VIEW_DOC, scope_outline, GIT_ui_core.CMD_TOGGLE, "list with diff", "Stash", 2));
