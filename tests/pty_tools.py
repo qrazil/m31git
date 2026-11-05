@@ -281,11 +281,13 @@ def main():
     git_seq = [subject(twin)]
     for _ in range(10):
         n = int(subject(twin)[1:])
-        res = git(twin, "bisect", "bad" if n >= 7 else "good")
+        git(twin, "bisect", "bad" if n >= 7 else "good")
+        # newer gits print the verdict on another stream: read it from the log they keep
         git_seq.append(subject(twin))
-        if "first bad commit" in res[0]:
+        if "# first bad commit" in open(os.path.join(twin, ".git", "BISECT_LOG")).read().replace("first 'bad' commit", "first bad commit"):
             break
-    git_log = open(os.path.join(twin, ".git", "BISECT_LOG")).read()
+    # newer gits quote the term in the last line ("first 'bad' commit"); the rest is the same
+    git_log = open(os.path.join(twin, ".git", "BISECT_LOG")).read().replace("first 'bad' commit", "first bad commit")
     s = P.Session(binpath, fx)
     s.send("3")
     s.send("t")

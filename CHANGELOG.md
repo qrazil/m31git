@@ -3,6 +3,14 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.36.1
+
+- Fixes `tests/pty_tools.py` on git 2.56 (CI failed the bisect checks): the test's git twin stopped when git's output said
+  "first bad commit", but newer gits print that elsewhere and quote the term in `BISECT_LOG` (`# first 'bad' commit:`), so it
+  kept marking and its log and step list grew. The twin now stops on the log's last line, quoted or not, and the log
+  comparison normalises that one quote. No program change: mgit's bisect was right.
+- The advertised user agent is `1git/0.36.1`.
+
 ## 0.36.0
 
 The owner's goal for 1git is now **a complete git replacement** (only deprecated or unused features may go). This release
