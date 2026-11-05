@@ -28,6 +28,7 @@
 import fs;
 import core.GIT_config;
 import diff.GIT_merge;
+import core.GIT_index;
 import core.GIT_object;
 import diff.GIT_rebase;
 import diff.GIT_rebase_todo;
@@ -507,6 +508,206 @@ pub void RebaseLayer.offer_pull(str spec) {
     push_overlay(PullAsk(this, spec));
 }
 
+/// `E`: the menu for the commit under the cursor.
+pub void RebaseLayer.open_quick() {
+    if (is_rebasing) {
+        push_overlay(BusyMenu(this));
+        return;
+    }
+    if (is_blocked_by_sequence("edit commit")) {
+        return;
+    }
+    if (is_merging) {
+        message = "edit commit is blocked while MERGING (m c continues, m a aborts)";
+        return;
+    }
+    str spec = GIT_ui_sequencer.commit_under_cursor(core());
+    str id = "";
+    if (spec != "") {
+        match (GIT_revparse.commit_id(gitdir, spec)) {
+            case Ok(str found): {
+                id = found;
+            }
+            case Err(_): {
+            }
+        }
+    }
+    if (id == "") {
+        message = "edit commit: put the cursor on a commit (in History)";
+        return;
+    }
+    push_overlay(QuickMenu(this, id));
+}
+
+/// Make `fixup! <subject of target>` from the index, on top of HEAD. Returns
+/// the new commit's id, or "" with the reason in the status line.
+pub str RebaseLayer.make_fixup_commit(str target) {
+    GIT_index.Index index = GIT_ui_model.read_index(gitdir);
+    for (GIT_index.Entry entry in index.entries) {
+        if (entry.stage != 0) {
+            message = "fixup: unmerged paths remain";
+            return "";
+        }
+    }
+    str tree_id = "";
+    match (GIT_ui_model.build_tree(gitdir, index.entries)) {
+        case Ok(str tree): {
+            tree_id = tree;
+        }
+        case Err(GIT_object.Error error): {
+            message = "write_tree: " + error.to_str();
+            return "";
+        }
+    }
+    str ref_name = "HEAD";
+    str head_id = "";
+    match (GIT_refs.head(gitdir)) {
+        case Ok(GIT_refs.Head head): {
+            match (head) {
+                case Born(str name, str id): {
+                    ref_name = name;
+                    head_id = id;
+                }
+                case Detached(str id): {
+                    head_id = id;
+                }
+                case Unborn(_): {
+                }
+            }
+        }
+        case Err(GIT_refs.Error error): {
+            message = "refs.head: " + error.to_str();
+            return "";
+        }
+    }
+    if (head_id == "") {
+        message = "fixup: there are no commits yet";
+        return "";
+    }
+    match (GIT_merge.read_commit(gitdir, head_id)) {
+        case Ok(GIT_object.Commit head_commit): {
+            if (head_commit.tree == tree_id) {
+                message = "fixup: nothing is staged (s stages a file in Status)";
+                return "";
+            }
+        }
+        case Err(_): {
+            message = "fixup: cannot read HEAD";
+            return "";
+        }
+    }
+    str subject = GIT_rebase_todo.subject_of_commit(gitdir, target);
+    GIT_object.Commit commit = GIT_object.Commit(tree_id, [head_id], GIT_ui_model.author_ident(gitdir), GIT_ui_model.committer_ident(gitdir), [], ("fixup! " + subject + "\n").to_bytes());
+    str commit_id = "";
+    match (GIT_object.write_commit(gitdir, commit)) {
+        case Ok(str id): {
+            commit_id = id;
+        }
+        case Err(GIT_object.Error error): {
+            message = "write_commit: " + error.to_str();
+            return "";
+        }
+    }
+    match (GIT_refs.update(gitdir, ref_name, commit_id, Option<str>.Some(head_id))) {
+        case Ok: {
+            log_command("commit --fixup " + GIT_ui_core.short_id(target));
+        }
+        case Err(GIT_refs.Error error): {
+            message = "refs.update: " + error.to_str();
+            return "";
+        }
+    }
+    return commit_id;
+}
+
+/// Run one quick action on `target` (a full commit id).
+/// `action` is one of reword, edit, drop, squash, fixup, up, down, amend.
+pub void RebaseLayer.quick_rebase(str action, str target) {
+    if (is_blocked_by_sequence("edit commit")) {
+        return;
+    }
+    if (action == "amend") {
+        str made = make_fixup_commit(target);
+        if (made == "") {
+            reload();
+            return;
+        }
+    }
+    str base = target;
+    if (action == "down" || action == "squash" || action == "fixup") {
+        // these act on the commit before, so the list starts one earlier
+        match (GIT_merge.read_commit(gitdir, target)) {
+            case Ok(GIT_object.Commit found): {
+                if (found.parents.size() == 0) {
+                    message = "edit commit: there is no commit before it";
+                    return;
+                }
+                base = found.parents[0];
+            }
+            case Err(_): {
+                message = "edit commit: cannot read " + GIT_ui_core.short_id(target);
+                return;
+            }
+        }
+    }
+    match (GIT_rebase.plan(gitdir, quick_plan_opts(gitdir, base))) {
+        case Ok(GIT_rebase.Plan plan): {
+            List<GIT_rebase_todo.Command> cmds = plan.commands;
+            int position = -1;
+            for (int index in 0 .. cmds.size()) {
+                if (cmds[index].id == target) {
+                    position = index;
+                }
+            }
+            if (position < 0) {
+                message = "edit commit: " + GIT_ui_core.short_id(target) + " is not on this branch";
+                return;
+            }
+            if (action == "amend") {
+                cmds = GIT_rebase_todo.autosquash(cmds);
+            }
+            if (action == "reword") {
+                cmds[position] = GIT_rebase_todo.Command(GIT_rebase_todo.Verb.Reword, cmds[position].id, cmds[position].text);
+            }
+            if (action == "edit") {
+                cmds[position] = GIT_rebase_todo.Command(GIT_rebase_todo.Verb.Edit, cmds[position].id, cmds[position].text);
+            }
+            if (action == "drop") {
+                cmds[position] = GIT_rebase_todo.Command(GIT_rebase_todo.Verb.Drop, cmds[position].id, cmds[position].text);
+            }
+            if (action == "squash" || action == "fixup") {
+                if (position == 0) {
+                    message = "edit commit: there is no commit before it to " + action + " into";
+                    return;
+                }
+                GIT_rebase_todo.Verb verb = GIT_rebase_todo.Verb.Squash;
+                if (action == "fixup") {
+                    verb = GIT_rebase_todo.Verb.Fixup;
+                }
+                cmds[position] = GIT_rebase_todo.Command(verb, cmds[position].id, cmds[position].text);
+            }
+            if (action == "up" || action == "down") {
+                int other = position + 1;
+                if (action == "down") {
+                    other = position - 1;
+                }
+                if (other < 0 || other >= cmds.size()) {
+                    message = "edit commit: it is already the newest commit of the branch";
+                    return;
+                }
+                GIT_rebase_todo.Command held = cmds[position];
+                cmds[position] = cmds[other];
+                cmds[other] = held;
+            }
+            GIT_rebase.StartOpts opts = GIT_rebase.StartOpts(is_interactive: true, should_autostash: true);
+            run_start(plan, cmds, opts, "rebase -i (" + action + " " + GIT_ui_core.short_id(target) + ")");
+        }
+        case Err(GIT_sequencer.Error error): {
+            message = "edit commit refused: " + error.to_str();
+        }
+    }
+}
+
 str label_of(str name) {
     if (GIT_object.is_name(name) && (name.size() == 40 || name.size() == 64)) {
         return GIT_ui_core.short_id(name);
@@ -858,4 +1059,120 @@ pub void TodoOverlay.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
 
 pub List<GIT_ui_core.Hint> TodoOverlay.hints() {
     return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_REBASE_TODO);
+}
+
+// --- E: edit the commit under the cursor ------------------------------------------------
+//
+// lazygit's commit panel (reword, edit, drop, squash, fixup, move, amend with the
+// staged changes) and magit's rebase-popup "modify", on the same machinery as
+// `r i`: a rebase -i from the commit's parent whose todo list is made here instead
+// of typed. The state is git's own (`.git/rebase-merge`), so a conflict stops it in
+// the usual way (`r c`, `r s`, `r a`) and `Z` undoes the whole thing.
+
+/// Where the rebase for a commit starts: its parent, or the root.
+GIT_rebase.PlanOpts quick_plan_opts(str gitdir, str target) {
+    str parent = "";
+    match (GIT_merge.read_commit(gitdir, target)) {
+        case Ok(GIT_object.Commit commit): {
+            if (commit.parents.size() > 0) {
+                parent = commit.parents[0];
+            }
+        }
+        case Err(_): {
+        }
+    }
+    if (parent == "") {
+        return GIT_rebase.PlanOpts(is_root: true, is_interactive: true);
+    }
+    return GIT_rebase.PlanOpts(upstream: parent, is_interactive: true);
+}
+
+type QuickMenu {
+    RebaseLayer host;
+    str target;
+}
+
+pub TUI_app.Action QuickMenu.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_QUICK, code)) {
+        case Some(str cmd): {
+            host.pop_overlay();
+            if (cmd == GIT_ui_core.CMD_Q_REWORD) {
+                host.quick_rebase("reword", target);
+            }
+            if (cmd == GIT_ui_core.CMD_Q_EDIT) {
+                host.quick_rebase("edit", target);
+            }
+            if (cmd == GIT_ui_core.CMD_Q_DROP) {
+                host.push_overlay(QuickAsk(host, target));
+            }
+            if (cmd == GIT_ui_core.CMD_Q_SQUASH) {
+                host.quick_rebase("squash", target);
+            }
+            if (cmd == GIT_ui_core.CMD_Q_FIXUP) {
+                host.quick_rebase("fixup", target);
+            }
+            if (cmd == GIT_ui_core.CMD_Q_UP) {
+                host.quick_rebase("up", target);
+            }
+            if (cmd == GIT_ui_core.CMD_Q_DOWN) {
+                host.quick_rebase("down", target);
+            }
+            if (cmd == GIT_ui_core.CMD_Q_AMEND) {
+                host.quick_rebase("amend", target);
+            }
+            if (cmd == GIT_ui_core.CMD_Q_NEW_FIXUP) {
+                if (host.make_fixup_commit(target) != "") {
+                    host.say("committed fixup! for " + GIT_ui_core.short_id(target) + " (r i with autosquash folds it in)");
+                }
+                host.reload();
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+pub void QuickMenu.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    TUI_menu.WhichKey which_key = TUI_menu.WhichKey("edit commit " + GIT_ui_core.short_id(target) + " " + GIT_rebase_todo.subject_of_commit(host.gitdir, target), GIT_ui_sequencer.items_of(GIT_ui_core.SCOPE_QUICK));
+    which_key.render(buffer, area);
+}
+
+pub List<GIT_ui_core.Hint> QuickMenu.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_QUICK);
+}
+
+type QuickAsk {
+    RebaseLayer host;
+    str target;
+}
+
+pub TUI_app.Action QuickAsk.handle_key(term.Code code) {
+    host.pop_overlay();
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_MERGE_ASK, code)) {
+        case Some(str cmd): {
+            if (cmd == GIT_ui_core.CMD_YES) {
+                host.quick_rebase("drop", target);
+                return TUI_app.Action.Redraw;
+            }
+        }
+        case None: {
+        }
+    }
+    host.say("cancelled: nothing was changed");
+    return TUI_app.Action.Redraw;
+}
+
+pub void QuickAsk.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    TUI_geometry.Rect inner = GIT_ui_panel.frame(buffer, area, "drop " + GIT_ui_core.short_id(target) + "?");
+    if (inner.is_empty()) {
+        return;
+    }
+    List<str> lines = [GIT_rebase_todo.subject_of_commit(host.gitdir, target), "", "The commit leaves the branch (a rebase -i with drop; Z undoes it).", "", "y: yes, drop it", "any other key: no, change nothing"];
+    GIT_ui_panel.draw_lines(buffer, inner, lines, 0, -1);
+}
+
+pub List<GIT_ui_core.Hint> QuickAsk.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_MERGE_ASK);
 }

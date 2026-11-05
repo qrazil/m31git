@@ -423,3 +423,12 @@ pub void open(GIT_ui_core.Core core, GIT_sequencer.Verb verb) {
     }
     core.push_overlay(PickMenu(core, verb, commit_under_cursor(core)));
 }
+
+/// The same menu for a given commit (the reflog's entries).
+pub void open_at(GIT_ui_core.Core core, GIT_sequencer.Verb verb, str target) {
+    if (core.is_rebasing || core.is_sequencing || core.is_merging) {
+        core.say(verb.noun() + " is blocked while something is under way");
+        return;
+    }
+    core.push_overlay(PickMenu(core, verb, target));
+}

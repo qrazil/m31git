@@ -336,10 +336,14 @@ void run_rename(GIT_ui_core.Core core, str old, str name, bool is_force) {
 
 /// `G`: the reset menu for the commit under the cursor.
 pub void open_reset(GIT_ui_core.Core core) {
+    open_reset_at(core, commit_under_cursor(core));
+}
+
+/// The same menu for a given commit (the reflog's entries).
+pub void open_reset_at(GIT_ui_core.Core core, str commit) {
     if (is_blocked(core, "reset")) {
         return;
     }
-    str commit = commit_under_cursor(core);
     if (commit == "") {
         core.say("reset: put the cursor on a commit first");
         return;
@@ -484,10 +488,13 @@ pub List<GIT_ui_core.Hint> ResetMenu.hints() {
 /// nothing, where git refuses: a file the checkout would change has local
 /// changes, or an untracked file is in the way. The message names that file.
 pub void detach(GIT_ui_core.Core core) {
+    detach_at(core, commit_under_cursor(core));
+}
+
+pub void detach_at(GIT_ui_core.Core core, str commit) {
     if (is_blocked(core, "check out")) {
         return;
     }
-    str commit = commit_under_cursor(core);
     if (commit == "") {
         core.say("check out: put the cursor on a commit first");
         return;

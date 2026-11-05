@@ -1,0 +1,100 @@
+// `L`: the reflog of HEAD as a list (lazygit's reflog panel, magit's `l o`).
+// Every place HEAD has been, newest first, with the reflog's own words. On an
+// entry: Enter or G the reset menu (soft, mixed, hard; hard asks first), o a
+// detached checkout, A a cherry-pick of its commit. Nothing here moves anything
+// by itself; the three actions are History's own, aimed at the entry.
+
+import core.GIT_reflog;
+import ui.GIT_ui_actions;
+import ui.GIT_ui_core;
+import ui.GIT_ui_panel;
+import diff.GIT_sequencer;
+import ui.GIT_ui_sequencer;
+import term;
+import tui.app.TUI_app;
+import tui.core.TUI_buffer;
+import tui.core.TUI_geometry;
+
+type ReflogOverlay {
+    GIT_ui_core.Core host;
+    List<GIT_reflog.Entry> entries;
+    int selected = 0;
+    int offset = 0;
+}
+
+pub TUI_app.Action ReflogOverlay.handle_key(term.Code code) {
+    match (GIT_ui_core.lookup(GIT_ui_core.SCOPE_REFLOG, code)) {
+        case Some(str cmd): {
+            if (cmd == GIT_ui_core.CMD_CLOSE) {
+                host.pop_overlay();
+                return TUI_app.Action.Redraw;
+            }
+            if (cmd == GIT_ui_core.CMD_DOWN && selected < entries.size() - 1) {
+                selected = selected + 1;
+            }
+            if (cmd == GIT_ui_core.CMD_UP && selected > 0) {
+                selected = selected - 1;
+            }
+            if (entries.size() > 0 && (cmd == GIT_ui_core.CMD_REFLOG_RESET || cmd == GIT_ui_core.CMD_REFLOG_DETACH || cmd == GIT_ui_core.CMD_REFLOG_PICK)) {
+                str id = entries[selected].new;
+                host.pop_overlay();
+                if (cmd == GIT_ui_core.CMD_REFLOG_RESET) {
+                    GIT_ui_actions.open_reset_at(host, id);
+                }
+                if (cmd == GIT_ui_core.CMD_REFLOG_DETACH) {
+                    GIT_ui_actions.detach_at(host, id);
+                }
+                if (cmd == GIT_ui_core.CMD_REFLOG_PICK) {
+                    GIT_ui_sequencer.open_at(host, GIT_sequencer.Verb.Pick, id);
+                }
+            }
+            return TUI_app.Action.Redraw;
+        }
+        case None: {
+        }
+    }
+    return TUI_app.Action.Continue;
+}
+
+pub void ReflogOverlay.render(TUI_buffer.Buffer buffer, TUI_geometry.Rect area) {
+    TUI_geometry.Rect inner = GIT_ui_panel.frame(buffer, area, "reflog of HEAD (" + entries.size().to_str() + ")");
+    if (inner.is_empty()) {
+        return;
+    }
+    if (selected < offset) {
+        offset = selected;
+    }
+    if (selected >= offset + inner.height) {
+        offset = selected - inner.height + 1;
+    }
+    offset = GIT_ui_panel.clamp(offset, entries.size(), inner.height);
+    List<str> text = [];
+    for (int index in 0 .. entries.size()) {
+        GIT_reflog.Entry entry = entries[index];
+        text.push("HEAD@{" + index.to_str() + "}  " + GIT_ui_core.short_id(entry.new) + "  " + entry.message);
+    }
+    if (text.size() == 0) {
+        text = ["(HEAD has no reflog)"];
+    }
+    GIT_ui_panel.draw_lines(buffer, inner, text, offset, selected);
+}
+
+pub List<GIT_ui_core.Hint> ReflogOverlay.hints() {
+    return GIT_ui_core.hints_for(GIT_ui_core.SCOPE_REFLOG);
+}
+
+/// `L`: open the list (newest entry first).
+pub void open(GIT_ui_core.Core core) {
+    match (GIT_reflog.read(core.gitdir, "HEAD")) {
+        case Ok(List<GIT_reflog.Entry> found): {
+            List<GIT_reflog.Entry> newest_first = [];
+            for (int index in 0 .. found.size()) {
+                newest_first.push(found[found.size() - 1 - index]);
+            }
+            core.push_overlay(ReflogOverlay(core, newest_first));
+        }
+        case Err(GIT_reflog.Error error): {
+            core.say("reflog: " + error.to_str());
+        }
+    }
+}

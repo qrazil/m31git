@@ -328,3 +328,19 @@ if rb_only "pty"; then
         bad "rebase pty: scripts/build.sh" "$(cat "$WORK/mgit_rebase_build.log")"
     fi
 fi
+
+# The commit edit menu (E) and the reflog list (L) under a real pty (`pty_quick.py`): reword,
+# edit, drop, squash, fixup, move up and down, amend with the staged changes, a fixup! commit,
+# reflog reset and checkout, each compared with git. Fixtures under `$WORK/pty_quick`.
+if rb_only "pty"; then
+    if [ -f "$WORK/mgit" ] || [ -f "$WORK/mgit_rebase" ] || bash scripts/build.sh -o "$WORK/mgit_rebase" >"$WORK/mgit_rebase_build.log" 2>&1; then
+        [ -f "$WORK/mgit" ] && rq_bin="$WORK/mgit" || rq_bin="$WORK/mgit_rebase"
+        if command -v python3 >/dev/null; then
+            if rq_out=$(python3 tests/pty_quick.py "$rq_bin" "$WORK/pty_quick" 2>&1); then
+                note "quick pty: $(echo "$rq_out" | grep -c '^ok') commit-edit and reflog checks passed under a real pty"
+            else
+                bad "quick pty" "$rq_out"
+            fi
+        fi
+    fi
+fi

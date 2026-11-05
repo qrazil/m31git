@@ -105,6 +105,8 @@ pub const str SCOPE_REBASE_TODO = "rebase-todo";
 pub const str SCOPE_PULL_ASK = "pull-ask";
 pub const str SCOPE_OVERVIEW = "overview";
 pub const str SCOPE_RESET = "reset";
+pub const str SCOPE_QUICK = "quick";
+pub const str SCOPE_REFLOG = "reflog";
 pub const str CMD_QUIT = "quit";
 /// Esc at the base: leave to the Status mode, or quit from it.
 pub const str CMD_LEAVE = "leave";
@@ -242,6 +244,20 @@ pub const str CMD_RESET_SOFT = "reset-soft";
 pub const str CMD_RESET_MIXED = "reset-mixed";
 pub const str CMD_RESET_HARD = "reset-hard";
 pub const str CMD_DETACH = "detach";
+pub const str CMD_QUICK = "quick";
+pub const str CMD_REFLOG = "reflog";
+pub const str CMD_Q_REWORD = "quick-reword";
+pub const str CMD_Q_EDIT = "quick-edit";
+pub const str CMD_Q_DROP = "quick-drop";
+pub const str CMD_Q_SQUASH = "quick-squash";
+pub const str CMD_Q_FIXUP = "quick-fixup";
+pub const str CMD_Q_UP = "quick-up";
+pub const str CMD_Q_DOWN = "quick-down";
+pub const str CMD_Q_AMEND = "quick-amend";
+pub const str CMD_Q_NEW_FIXUP = "quick-new-fixup";
+pub const str CMD_REFLOG_RESET = "reflog-reset";
+pub const str CMD_REFLOG_DETACH = "reflog-detach";
+pub const str CMD_REFLOG_PICK = "reflog-pick";
 pub const str CMD_SIGNOFF = "signoff";
 /// What `pick_purpose` says a finished remote-ref picker was for.
 pub const str PICK_REMOTE_REF = "remote-ref";
@@ -958,6 +974,8 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_OUTLINE, CMD_BRANCH_RENAME, ["e"], "rename the branch under the cursor (git branch -m); asks before replacing a branch that exists", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_RESET, ["G"], "reset the current branch to the commit under the cursor: soft, mixed or hard (a hard reset asks first)", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_DETACH, ["o"], "check out the commit under the cursor with a detached HEAD (git checkout --detach)", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_QUICK, ["E"], "edit the commit under the cursor (a menu): reword, edit, drop, squash or fixup into the one before, move up or down, amend it with the staged changes, make a fixup! commit for it", "", ""));
+    table.push(Binding(SCOPE_OUTLINE, CMD_REFLOG, ["L"], "the reflog of HEAD: every place HEAD has been; reset to one, check it out or cherry-pick it", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_JUMP, ["J"], "show or hide the jump list", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_FOCUS, ["w"], "give the jump list the keys, or take them back", "", ""));
     table.push(Binding(SCOPE_OUTLINE, CMD_SEARCH, ["/"], "search the outline and the log (smart-case: lower case ignores case)", "", ""));
@@ -1021,6 +1039,22 @@ pub List<Binding> key_table() {
     table.push(Binding(SCOPE_RESET, CMD_RESET_MIXED, ["m"], "mixed: move the branch and reset the index; the files keep their changes", "m", "mixed"));
     table.push(Binding(SCOPE_RESET, CMD_RESET_HARD, ["h"], "hard: move the branch, reset the index and the files; tracked changes are lost (asks first)", "h", "hard"));
     table.push(Binding(SCOPE_RESET, CMD_CLOSE, ["escape"], "close", "esc", "close"));
+    table.push(Binding(SCOPE_QUICK, CMD_Q_REWORD, ["r"], "reword: change the commit's message in $EDITOR (a rebase -i with reword)", "r", "reword"));
+    table.push(Binding(SCOPE_QUICK, CMD_Q_EDIT, ["e"], "edit: stop the rebase at the commit so it can be changed, then r c", "e", "edit"));
+    table.push(Binding(SCOPE_QUICK, CMD_Q_DROP, ["d"], "drop the commit (asks first; Z undoes it)", "d", "drop"));
+    table.push(Binding(SCOPE_QUICK, CMD_Q_SQUASH, ["s"], "squash into the commit before it, keeping both messages", "s", "squash down"));
+    table.push(Binding(SCOPE_QUICK, CMD_Q_FIXUP, ["f"], "fixup into the commit before it, keeping that one's message", "f", "fixup down"));
+    table.push(Binding(SCOPE_QUICK, CMD_Q_UP, ["k"], "move the commit up the log (later in history)", "k", "move up"));
+    table.push(Binding(SCOPE_QUICK, CMD_Q_DOWN, ["j"], "move the commit down the log (earlier in history)", "j", "move down"));
+    table.push(Binding(SCOPE_QUICK, CMD_Q_AMEND, ["a"], "amend the commit with the staged changes (fixup! plus autosquash; unstaged changes are autostashed)", "a", "amend with staged"));
+    table.push(Binding(SCOPE_QUICK, CMD_Q_NEW_FIXUP, ["F"], "commit the staged changes as fixup! <subject> without rebasing (git commit --fixup)", "F", "new fixup!"));
+    table.push(Binding(SCOPE_QUICK, CMD_CLOSE, ["escape"], "close", "esc", "close"));
+    table.push(Binding(SCOPE_REFLOG, CMD_DOWN, ["j", "down"], "next entry", "j/k", "move"));
+    table.push(Binding(SCOPE_REFLOG, CMD_UP, ["k", "up"], "previous entry", "", ""));
+    table.push(Binding(SCOPE_REFLOG, CMD_REFLOG_RESET, ["enter", "G"], "reset the branch to the entry (soft, mixed, hard)", "enter", "reset"));
+    table.push(Binding(SCOPE_REFLOG, CMD_REFLOG_DETACH, ["o"], "check the entry out with a detached HEAD", "o", "detach"));
+    table.push(Binding(SCOPE_REFLOG, CMD_REFLOG_PICK, ["A"], "cherry-pick the entry's commit", "A", "cherry-pick"));
+    table.push(Binding(SCOPE_REFLOG, CMD_CLOSE, ["escape", "q"], "close", "q", "close"));
     table.push(Binding(SCOPE_BRANCH, CMD_CHECKOUT, ["c"], "check out the branch under the cursor", "c", "checkout"));
     table.push(Binding(SCOPE_BRANCH, CMD_PICK_BRANCH, ["/"], "check out a branch picked by typing part of its name", "/", "pick"));
     table.push(Binding(SCOPE_BRANCH, CMD_NEW_BRANCH, ["n"], "new branch from HEAD: name it in $EDITOR, then switch to it", "n", "new"));
@@ -1339,12 +1373,18 @@ pub str scope_title(str scope) {
     if (scope == SCOPE_RESET) {
         return "reset menu (History, G)";
     }
+    if (scope == SCOPE_QUICK) {
+        return "commit edit menu (History, E)";
+    }
+    if (scope == SCOPE_REFLOG) {
+        return "reflog of HEAD (L)";
+    }
     return scope;
 }
 
 /// Every scope, in the order the help overlay lists them.
 pub List<str> all_scopes() {
-    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET];
+    return [SCOPE_OUTLINE, SCOPE_DIFF, SCOPE_GLOBAL, SCOPE_COMMIT, SCOPE_BRANCH, SCOPE_PUSH, SCOPE_PULL, SCOPE_CONFIRM, SCOPE_LOG, SCOPE_HELP, SCOPE_SEARCH, SCOPE_PICKER, SCOPE_MERGE, SCOPE_MERGE_ASK, SCOPE_RESOLVE, SCOPE_STASH, SCOPE_STASH_LIST, SCOPE_STASH_PROMPT, SCOPE_BLAME, SCOPE_FILELOG, SCOPE_SHOW, SCOPE_UNDO, SCOPE_TAGS, SCOPE_PROMPT, SCOPE_PICK, SCOPE_REVERT, SCOPE_SEQUENCE, SCOPE_REBASE, SCOPE_REBASE_BUSY, SCOPE_REBASE_TODO, SCOPE_PULL_ASK, SCOPE_OVERVIEW, SCOPE_RESET, SCOPE_QUICK, SCOPE_REFLOG];
 }
 
 // --- the overlay stack and the command log -------------------------------------

@@ -3,6 +3,23 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.31.0
+
+- **mgit parity work begins**: `docs/MGIT-PARITY.md` is the matrix of lazygit, magit and neogit against mgit (128 rows:
+  50 done, 16 partial, 49 missing, 13 out of scope), verified by running mgit; the magit manual was unreachable from the
+  build machine and its rows rest on memory (said in the file).
+- **`E` in History: edit the commit under the cursor.** A menu: `r` reword, `e` edit (stop there), `d` drop (asks),
+  `s` squash into the commit before, `f` fixup into it, `k`/`j` move the commit up/down the log, `a` amend it with the
+  staged changes (a `fixup!` commit, autosquashed; unstaged changes are autostashed), `F` commit the staged changes as
+  `fixup! <subject>`. They run a real interactive rebase (`.git/rebase-merge`), so `r c`/`r s`/`r a` and `Z` apply.
+- **`L` in History: the reflog of HEAD** as a list: Enter or `G` the reset menu to the entry, `o` a detached checkout,
+  `A` a cherry-pick.
+- `tests/pty_quick.py` (31 checks, in `tests/test_rebase.sh`): every action compared with `git rebase -i`,
+  `git commit --fixup` and `git reset`; fsck clean.
+- Already present and verified, not changed: hunk and line staging, the todo editor, cherry-pick/revert menus, stash and
+  reset menus, the conflict view, `Z` undo.
+- The advertised user agent is `1git/0.31.0`. tui stays pinned at 0.15.0.
+
 ## 0.30.0
 
 - **Pins tui 0.15.0** (f7c9189; see its CHANGELOG for 0.14.0 and 0.15.0). mgit now measures the terminal at start-up and

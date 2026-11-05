@@ -137,6 +137,7 @@ bash scripts/build.sh                 # mgit.m31 -> ./mgit   (-o name to rename)
 | `tests/t_sections.m31`, `tests/pty_sections.py` | the section model and statusline text, and the section keys, folds, hunk folds, statusline and overview under a pty |
 | `tests/t_highlight.m31`, `tests/pty_highlight.py` | the syntax colouring: pure line styling, and the SGR colours, scrolling and switches under a pty |
 | `tests/t_modes.m31`, `tests/pty_modes.py` | the modes: the key map's invariants (no key bound twice in a mode, nothing lost, every action in the palette, the hint row fitting every width including wide characters), and a tour of every mode at 80x24, 120x40 and 40x12 through `pyte` that checks the tab bar, the hint row on the last row, nothing past the last column and incremental updates against a full redraw (skipped without `pyte`) |
+| `docs/MGIT-PARITY.md` | the feature matrix of lazygit, magit and neogit against mgit, and the plan |
 | `tests/pty_e2e.py`, `tests/pty_blame_undo.py` | drive `mgit` under a real pty against disposable fixtures, real `git` as the oracle (the second file: blame, history, undo, tags, ahead/behind, `push -u`, auto-refresh) |
 | `scripts/compare.sh` | every command beside the real `git`, compared octet for octet |
 | `scripts/compare_status.sh` | `1git status` beside the real `git status` on disposable fixtures: ~20 forms each, bytes and exit status |
