@@ -250,12 +250,15 @@ import http.server
 import os
 import sys
 
+sys.path.insert(0, os.environ["M31_TESTS_DIR"])
+import cgihandler
+
 port = int(sys.argv[1])
 os.chdir(sys.argv[2])
 want = os.environ.get("PUSH_TEST_AUTH")
 
 
-class Handler(http.server.CGIHTTPRequestHandler):
+class Handler(cgihandler.CGIHTTPRequestHandler):
     cgi_directories = ["/cgi-bin"]
 
     def log_message(self, fmt, *args):

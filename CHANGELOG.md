@@ -3,6 +3,14 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.37.2
+
+- **Python 3.13 (the macOS runners): `http.server.CGIHTTPRequestHandler` is gone.** The test servers (`test_httpfetch.sh`,
+  `test_push.sh`, `test_sha256.sh`, `pty_e2e.py`, `pty_blame_undo.py`, `pty_merge.py`) use `tests/cgihandler.py`, a
+  stdlib-only stand-in that runs the `git http-backend` wrappers with the CGI environment (request body, chunked bodies,
+  `Status:` and the other headers back). `tests/test.sh` exports `M31_TESTS_DIR` for the servers started from shell heredocs.
+- The advertised user agent is `1git/0.37.2`.
+
 ## 0.37.1
 
 Two differences from git that CI found on git 2.56 (and that 2.49 shows too).

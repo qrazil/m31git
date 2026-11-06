@@ -26,6 +26,9 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 unset VISUAL GIT_EDITOR EDITOR GIT_SEQUENCE_EDITOR
 export LC_ALL=C TZ=UTC
+# the python test servers import tests/cgihandler.py (CGIHTTPRequestHandler is gone from Python 3.13)
+M31_TESTS_DIR=$(cd tests && pwd)
+export M31_TESTS_DIR
 # mgit remembers nothing between sessions in a test run (ui/GIT_ui_state.m31)
 export M31GIT_STATE=off
 

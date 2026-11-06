@@ -915,6 +915,7 @@ def main():
     # A real `git http-backend` served from a thread of this very script, as a
     # CGI behind `http.server`; the bare repository behind it is the oracle.
     import http.server
+    import cgihandler
     import threading
 
     backend = os.path.join(subprocess.run(["git", "--exec-path"], capture_output=True, text=True).stdout.strip(), "git-http-backend")
@@ -932,7 +933,7 @@ def main():
             f.write("#!/bin/sh\nexport GIT_PROJECT_ROOT=%s\nexport GIT_HTTP_EXPORT_ALL=1\nexec %s\n" % (os.path.join(ps_root, "srv"), backend))
         os.chmod(wrapper, 0o755)
 
-        class PushHandler(http.server.CGIHTTPRequestHandler):
+        class PushHandler(cgihandler.CGIHTTPRequestHandler):
             cgi_directories = ["/cgi-bin"]
 
             def log_message(self, fmt, *args):

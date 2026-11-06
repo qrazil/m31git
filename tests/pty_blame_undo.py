@@ -11,6 +11,7 @@ client created.
 """
 import functools
 import http.server
+import cgihandler
 import os
 import subprocess
 import sys
@@ -327,7 +328,7 @@ def run(ctx):
         f.write("#!/bin/sh\nexport GIT_PROJECT_ROOT=%s\nexport GIT_HTTP_EXPORT_ALL=1\nexec %s\n" % (os.path.join(pu_root, "srv"), backend))
     os.chmod(wrapper, 0o755)
 
-    class Handler(http.server.CGIHTTPRequestHandler):
+    class Handler(cgihandler.CGIHTTPRequestHandler):
         cgi_directories = ["/cgi-bin"]
 
         def log_message(self, fmt, *args):

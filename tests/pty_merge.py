@@ -138,8 +138,10 @@ def start_server(root):
     with open(serve, "w") as f:
         f.write(
             "import http.server, os, sys\n"
+            "sys.path.insert(0, %r)\n" % os.path.dirname(os.path.abspath(__file__))
+            + "import cgihandler\n"
             "os.chdir(sys.argv[2])\n"
-            "class H(http.server.CGIHTTPRequestHandler):\n"
+            "class H(cgihandler.CGIHTTPRequestHandler):\n"
             "    cgi_directories = ['/cgi-bin']\n"
             "    def log_message(self, fmt, *args):\n"
             "        pass\n"
