@@ -30,6 +30,7 @@ import core.GIT_clitable;
 import core.GIT_gitconfigcmd;
 import core.GIT_gitplumb;
 import core.GIT_gitobj;
+import core.GIT_gitinfo;
 import core.GIT_gitrefuse;
 import core.GIT_hash;
 import core.GIT_repository;
@@ -606,6 +607,18 @@ pub int run_git(str git, Env env, List<str> argv) {
     if (git == "rev-parse") {
         return GIT_gitobj.run_rev_parse(cwd, overrides, given);
     }
+    if (git == "reflog") {
+        return GIT_gitinfo.run_reflog(cwd, overrides, given);
+    }
+    if (git == "shortlog") {
+        return GIT_gitinfo.run_shortlog(cwd, overrides, given);
+    }
+    if (git == "describe") {
+        return GIT_gitinfo.run_describe(cwd, overrides, given);
+    }
+    if (git == "check-ignore") {
+        return GIT_gitinfo.run_check_ignore(cwd, overrides, given);
+    }
     if (git == "config") {
         return GIT_gitconfigcmd.run_config(cwd, overrides, given);
     }
@@ -827,7 +840,7 @@ bool is_in(str word, str choices) {
 }
 
 List<str> git_words() {
-    return ["status", "log", "show", "diff", "add", "rm", "mv", "restore", "reset", "commit", "switch", "checkout", "branch", "tag", "stash", "cherry-pick", "revert", "merge", "rebase", "clean", "worktree", "clone", "init", "fetch", "pull", "push", "remote", "ls-remote", "cat-file", "ls-tree", "rev-parse", "config", "merge-base", "rev-list", "symbolic-ref", "update-ref", "show-ref", "for-each-ref", "hash-object", "write-tree", "commit-tree", "ls-files", "check-ref-format"];
+    return ["status", "log", "show", "diff", "add", "rm", "mv", "restore", "reset", "commit", "switch", "checkout", "branch", "tag", "stash", "cherry-pick", "revert", "merge", "rebase", "clean", "worktree", "clone", "init", "fetch", "pull", "push", "remote", "ls-remote", "cat-file", "ls-tree", "rev-parse", "config", "merge-base", "rev-list", "symbolic-ref", "update-ref", "show-ref", "for-each-ref", "hash-object", "write-tree", "commit-tree", "ls-files", "check-ref-format", "reflog", "shortlog", "describe", "check-ignore"];
 }
 
 /// The index of the git command in `argv` once git's own leading options
@@ -1368,7 +1381,14 @@ List<List<str>> split_subcommand(List<str> rest) {
 Result<List<str>, str> rewrite_command(Cli cli, Env env, str git, List<str> rest) {
     str word = git;
     List<str> words = rest;
-    if (git == "stash" || git == "remote" || git == "worktree") {
+    if (git == "reflog") {
+        if (rest.size() > 0 && is_in(rest[0], "exists,delete,expire,list")) {
+            word = "reflog-" + rest[0];
+            words = rest.slice(1, rest.size());
+        } else if (rest.size() > 0 && rest[0] == "show") {
+            words = rest.slice(1, rest.size());
+        }
+    } else if (git == "stash" || git == "remote" || git == "worktree") {
         List<List<str>> split = split_subcommand(rest);
         str sub = split[0][0];
         words = split[1];

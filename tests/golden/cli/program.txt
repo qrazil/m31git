@@ -60,6 +60,14 @@ commands:
       -commit-tree             write a commit object for a tree
       -ls-files                list the files of the index and the work tree
       -check-ref-format        check that a ref name is well formed
+      -reflog                  show where a ref has been (HEAD by default)
+      -reflog-exists           exit 0 when a ref has a reflog, 1 when not
+      -reflog-delete           delete reflog entries: REF@{N}
+      -reflog-expire           forget reflog entries older than a time
+      -reflog-list             list the refs that have a reflog
+      -shortlog                summarize the history by author
+      -describe                name a commit after the nearest tag
+      -check-ignore            say which paths the ignore files ignore
       -cat-file                print an object's type, size or contents
       -ls-tree                 list a tree's entries
       -rev-parse               the object names a revision resolves to, and facts about the repository

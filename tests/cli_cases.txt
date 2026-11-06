@@ -668,3 +668,55 @@
 = git checkout --detach -f --ours --theirs --track -p -q main
 -checkout --ours --path a.txt
 = git checkout --ours -- a.txt
+
+# --- reflog, shortlog, describe, check-ignore
+-reflog
+= git reflog show
+< git reflog
+< git reflog show
+-reflog main --max 3 --date iso
+= git reflog show --max-count=3 --date=iso main
+< git reflog show -n 3 --date=iso main
+-reflog-exists refs/heads/main
+= git reflog exists refs/heads/main
+< git reflog exists refs/heads/main
+-reflog-delete 'HEAD@{1}' --rewrite --dry-run
+= git reflog delete --rewrite --dry-run 'HEAD@{1}'
+-reflog-delete 'HEAD@{1}'
+= git reflog delete 'HEAD@{1}'
+< git reflog delete 'HEAD@{1}'
+-reflog-expire --all --expire now --dry-run --rewrite
+= git reflog expire --all --expire=now --dry-run --rewrite
+-reflog-expire HEAD --expire now
+= git reflog expire --expire=now HEAD
+< git reflog expire --expire=now HEAD
+-reflog-list
+= git reflog list
+< git reflog list
+-shortlog
+= git shortlog
+< git shortlog
+-shortlog main --summary --numbered --email --committer --merges only
+= git shortlog -s -n -e -c --merges main
+-shortlog main --summary
+= git shortlog -s main
+< git shortlog -s main
+-shortlog --merges exclude
+= git shortlog --no-merges
+< git shortlog --no-merges
+-describe
+= git describe
+< git describe
+-describe main --tags --long --always --exact-match --abbrev 10 --match 'v*' --exclude 'x*'
+= git describe --tags --long --always --exact-match --abbrev=10 '--match=v*' '--exclude=x*' main
+-describe --tags
+= git describe --tags
+< git describe --tags
+-describe --abbrev 8
+= git describe --abbrev=8
+< git describe --abbrev=8
+-check-ignore a.log --quiet --stdin --nul --no-index
+= git check-ignore -q --stdin -z --no-index -- a.log
+-check-ignore a.log
+= git check-ignore -- a.log
+< git check-ignore a.log

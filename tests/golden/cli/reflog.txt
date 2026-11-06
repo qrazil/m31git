@@ -1,0 +1,11 @@
+usage: 1git -reflog [options] [<REF>]
+
+show where a ref has been (HEAD by default)
+
+arguments:
+  [<REF>]            the ref (default: HEAD)
+
+options:
+       --help        show this help
+  --n, --max N       stop after this many entries
+       --date STYLE  show the dates in the selectors: iso, short, relative, unix ...

@@ -1,0 +1,11 @@
+usage: 1git -reflog-delete [options] [<REF@{N}>...]
+
+delete reflog entries: REF@{N}
+
+arguments:
+  [<REF@{N}>...]  the entries
+
+options:
+       --help     show this help
+       --rewrite  make the next entry start where the deleted one did
+       --dry-run  only say what would go

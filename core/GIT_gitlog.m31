@@ -116,6 +116,8 @@ type Walk {
     bool is_want_ancestry = false;
     // `show`: the commit alone, without its parents
     bool is_no_walk = false;
+    // run as `git show` (not `git log`)
+    bool is_show_cmd = false;
 }
 
 bool Walk.parse(str id) {
@@ -3195,6 +3197,7 @@ pub int run(str start, List<str> overrides, List<str> argv, bool is_show) {
     walk.dopts = dopts;
     walk.is_want_ancestry = opts.is_graph;
     walk.is_no_walk = opts.is_no_walk;
+    walk.is_show_cmd = is_show;
     if (opts.is_follow) {
         walk.follow_path = specs[0].pattern;
     }
@@ -3323,7 +3326,8 @@ bool log_tree_commit(Walk walk, Emitter emitter, str id, bool is_needs_diff, Lis
 bool log_tree_commit_with(Walk walk, Emitter emitter, str id, bool is_needs_diff, List<GIT_gitcommon.Spec> specs, GIT_gitdiff.DOpts dopts) {
     GIT_object.Commit commit = walk.commit(id);
     List<str> parents = walk.parents_of(id);
-    bool is_always_show_header = walk.opts.pickaxe == "" && !walk.opts.is_follow && dopts.filter == "" && dopts.filter_not == "";
+    // a path limit turns the always-show-header of `git show` off: a commit that changes none of the paths prints nothing
+    bool is_always_show_header = walk.opts.pickaxe == "" && !walk.opts.is_follow && dopts.filter == "" && dopts.filter_not == "" && (specs.size() == 0 || !walk.is_show_cmd);
     bool is_shown = false;
     if (is_needs_diff) {
         List<GIT_gitdiff.Item> items = [];
@@ -3397,6 +3401,17 @@ bool log_tree_commit_with(Walk walk, Emitter emitter, str id, bool is_needs_diff
 /// then the patch of every path that differs from all parents
 /// (`diff_tree_combined`). Returns true: the header is always shown.
 bool combined_commit(Walk walk, Emitter emitter, str id, GIT_object.Commit commit, List<str> parents, List<GIT_gitcommon.Spec> specs, GIT_gitdiff.DOpts dopts) {
+    if (specs.size() > 0 && walk.is_show_cmd) {
+        // under a path limit a merge that changes none of the paths prints nothing, not even its header
+        List<str> limit_trees = [];
+        for (str parent in parents) {
+            limit_trees.push(walk.commit(parent).tree);
+        }
+        bool is_any_stat = dopts.is_stat || dopts.is_numstat || dopts.is_shortstat || dopts.is_summary;
+        if (!is_any_stat && GIT_combine.merge_paths(walk.repo, limit_trees, commit.tree, specs, dopts).size() == 0) {
+            return false;
+        }
+    }
     emitter.show_log(id, commit, parents);
     if (DOpts_any(dopts) && !emitter.is_empty_format) {
         if (emitter.has_graph) {
@@ -3575,6 +3590,7 @@ int show_objects(GIT_gitcommon.Ctx ctx, GIT_gitstore.Store repo, LOpts opts, GIT
                             walk.repo = repo;
                             walk.dopts = dopts;
                             walk.is_no_walk = true;
+                            walk.is_show_cmd = true;
                             walk.is_want_ancestry = opts.is_graph;
                             walk.parse(id);
                             walk.set_flag(id, F_SEEN);

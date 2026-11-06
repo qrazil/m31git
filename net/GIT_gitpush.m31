@@ -638,6 +638,15 @@ pub int run_push(str start, List<str> overrides, List<str> argv) {
             sent = sent + 1;
             if (remote.is_named) {
                 update_tracking(ctx, remote, command, command_items[i]);
+            } else {
+                // git 2.5x: a URL that is some remote's URL moves that remote's tracking refs too
+                match (remote_of_url(ctx, remote.url)) {
+                    case Some(GIT_gitfetch.Remote configured): {
+                        update_tracking(ctx, configured, command, command_items[i]);
+                    }
+                    case None: {
+                    }
+                }
             }
         }
     }
@@ -733,6 +742,30 @@ void report_failure(List<Row> rows, str url_shown, GIT_gitcommon.Ctx ctx) {
     } else if (is_tag && GIT_gitcommon.cfg_bool(ctx, "advice", "", "pushAlreadyExists", true)) {
         io.eprint("hint: Updates were rejected because the tag already exists in the remote.");
     }
+}
+
+// The configured remote whose url (or pushurl) is this URL, if any.
+Option<GIT_gitfetch.Remote> remote_of_url(GIT_gitcommon.Ctx context, str url) {
+    for (str section in context.config.sections()) {
+        if (!section.starts_with("remote.")) {
+            continue;
+        }
+        str name = section.substr(7, section.size());
+        List<str> urls = context.config.get_all("remote", name, "url");
+        for (str other in context.config.get_all("remote", name, "pushurl")) {
+            urls.push(other);
+        }
+        if (urls.contains(url)) {
+            match (GIT_gitfetch.resolve(context, name, true)) {
+                case Ok(GIT_gitfetch.Remote found): {
+                    return Option<GIT_gitfetch.Remote>.Some(found);
+                }
+                case Err(_): {
+                }
+            }
+        }
+    }
+    return Option<GIT_gitfetch.Remote>.None;
 }
 
 // The remote-tracking ref of a pushed ref moves with the push ("update by push").

@@ -1,0 +1,6 @@
+usage: 1git -reflog-list
+
+list the refs that have a reflog
+
+options:
+       --help  show this help

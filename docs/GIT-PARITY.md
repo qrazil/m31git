@@ -84,7 +84,7 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 (git's own deprecation record), OUT (belongs to another ecosystem).
 
 <!-- matrix:begin -->
-148 git commands in the matrix: 1git state done 9, partial 37, missing 102; decision IMPLEMENT 116, LATER 8, DROP 4, OUT of scope 20.
+148 git commands in the matrix: 1git state done 9, partial 41, missing 98; decision IMPLEMENT 116, LATER 8, DROP 4, OUT of scope 20.
 
 | command | group | git 2.49 | 1git | decision | note |
 |---|---|---|---|---|---|
@@ -101,7 +101,7 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 | `clean` | porcelain | kept | partial | IMPLEMENT P2 | -i and -e missing |
 | `clone` | porcelain | kept | partial | IMPLEMENT P1 | --recurse-submodules, --reference, --shared, --local hardlinks missing |
 | `commit` | porcelain | kept | partial | IMPLEMENT P1 | -S (gpg/ssh signing via external tools) missing; --fixup/--squash/-C/-c/--interactive checked per option in the harness |
-| `describe` | porcelain | kept | missing | IMPLEMENT P1 |  |
+| `describe` | porcelain | kept | partial | IMPLEMENT P1 | 0.37: --tags --long --always --exact-match --abbrev --match --exclude; --dirty --broken --all --contains --first-parent --candidates missing |
 | `diff` | porcelain | kept | partial | IMPLEMENT P1 | --word-diff, --color-moved, --ext-diff, textconv, --submodule missing |
 | `fetch` | porcelain | kept | partial | IMPLEMENT P1 | --recurse-submodules, bundle-uri, protocol v0/v1 via file/git:// missing |
 | `format-patch` | porcelain | kept | missing | IMPLEMENT P1 |  |
@@ -124,7 +124,7 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 | `revert` | porcelain | kept | partial | IMPLEMENT P1 |  |
 | `rm` | porcelain | kept | partial | IMPLEMENT P2 |  |
 | `scalar` | porcelain | kept | missing | OUT | Microsoft's wrapper around config/maintenance/sparse-checkout; the pieces are separate commands |
-| `shortlog` | porcelain | kept | missing | IMPLEMENT P1 |  |
+| `shortlog` | porcelain | kept | partial | IMPLEMENT P1 | 0.37: -s -n -e -c, revisions, --merges/--no-merges; -w, --group, --format and reading a log from standard input missing; .mailmap not applied |
 | `show` | porcelain | kept | partial | IMPLEMENT P1 |  |
 | `sparse-checkout` | porcelain | kept (non-cone mode deprecated, see below) | missing | IMPLEMENT P2 | cone mode only: git-sparse-checkout.adoc "non-cone mode is deprecated" |
 | `stash` | porcelain | kept (stash save deprecated in favour of push) | partial | IMPLEMENT P2 | branch, create, store, export/import missing; save is not implemented |
@@ -140,7 +140,7 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 | `mergetool` | ancillary-manipulators | kept | missing | LATER P3 | launches external tools; needs the merge machinery of -merge |
 | `pack-refs` | ancillary-manipulators | kept | missing | IMPLEMENT P3 |  |
 | `prune` | ancillary-manipulators | kept | missing | IMPLEMENT P2 |  |
-| `reflog` | ancillary-manipulators | kept | missing | IMPLEMENT P1 | show/list/expire/delete/exists; the library (GIT_reflog) exists |
+| `reflog` | ancillary-manipulators | kept | partial | IMPLEMENT P1 | 0.37: show (-n, --date), exists, delete, expire (--expire=now/never/date, --all), list; expire --expire-unreachable/--stale-fix/--updateref missing |
 | `refs` | ancillary-manipulators | kept | partial | IMPLEMENT P3 | 1git -refs is its own listing; git refs verify/list/migrate missing |
 | `remote` | ancillary-manipulators | kept | partial | IMPLEMENT P2 | update, set-branches, prune done; show -n |
 | `repack` | ancillary-manipulators | kept | missing | IMPLEMENT P2 |  |
@@ -218,7 +218,7 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 | `send-pack` | plumbing-sync | kept | missing | IMPLEMENT P3 |  |
 | `update-server-info` | plumbing-sync | kept | missing | LATER P3 | dumb HTTP only; not on git's removal list |
 | `check-attr` | helpers | kept | missing | IMPLEMENT P2 |  |
-| `check-ignore` | helpers | kept | missing | IMPLEMENT P1 | the ignore matcher of the library exists |
+| `check-ignore` | helpers | kept | partial | IMPLEMENT P1 | 0.37: paths, -q, --stdin, -z; -v and -n (which pattern matched) missing |
 | `check-mailmap` | helpers | kept | missing | IMPLEMENT P3 |  |
 | `check-ref-format` | helpers | kept | done | IMPLEMENT P2 | 0.31 |
 | `column` | helpers | kept | missing | IMPLEMENT P3 |  |
@@ -280,13 +280,13 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 Run `bash tests/conformance/run.sh ./1git` for the current table; the figures
 below are from the commit that carries this file.
 
-| measure | at 0.36.0 |
+| measure | at 0.37.0 |
 |---|---|
-| git commands in the matrix | 148 (done 9, partial 37, missing 102) |
+| git commands in the matrix | 148 (done 9, partial 41, missing 98) |
 | decisions | IMPLEMENT 116, LATER 8, DROP 4 (`whatchanged`, `pack-redundant`, `filter-branch`, `help`), OUT of scope 20 |
-| conformance cases | 585 over 75 commands: **469 pass**, 0 unexpected failures, 10 known gaps, 106 missing (no 1git spelling yet) |
+| conformance cases | 629 over 75 commands: **528 pass**, 0 unexpected failures, 10 known gaps, 91 missing (no 1git spelling yet); numbers of 0.36.0 were 585 / 469 / 10 / 106 |
 | commands with a passing case | 38 |
-| option spellings in `tests/cli_cases.txt` | 491 options covered, 116 git spellings migrated |
+| option spellings in `tests/cli_cases.txt` | 515 options covered, 130 git spellings migrated |
 
 Known gaps (`known-failures.txt`): `reset --keep` with local changes (git refuses,
 1git resets), `tag --sort=-creatordate` with equal dates, `stash push <path>`,
@@ -296,8 +296,8 @@ already upstream" line), `rebase -i` of a branch that is already merged,
 path. `init` does not copy git's template directory (sample hooks,
 `description`, `info/exclude`): the harness ignores those files until it does.
 
-What remains, in the order of the work plan: P1 `reflog`, `blame`/`annotate`,
-`describe`, `shortlog`, `grep`, `format-patch`/`am`/`apply`, `bisect`,
+What remains, in the order of the work plan: P1 `blame`/`annotate`,
+`grep`, `format-patch`/`am`/`apply`, `bisect`,
 `submodule`, `check-ignore`, `rebase --rebase-merges --update-refs`,
 `file://` remotes, and the missing options of the commands that exist; then P2
 (`gc`, `maintenance`, `fsck`, `repack`, `prune`, `notes`, `bundle`,

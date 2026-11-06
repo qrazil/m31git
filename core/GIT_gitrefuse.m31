@@ -21,9 +21,6 @@ pub str refusal(str word) {
     if (word == "citool") {
         return "citool is not in 1git: Tk GUI (docs/GIT-PARITY.md)";
     }
-    if (word == "describe") {
-        return "describe is not in 1git yet: planned, priority P1 (docs/GIT-PARITY.md)";
-    }
     if (word == "format-patch") {
         return "format-patch is not in 1git yet: planned, priority P1 (docs/GIT-PARITY.md)";
     }
@@ -51,9 +48,6 @@ pub str refusal(str word) {
     if (word == "scalar") {
         return "scalar is not in 1git: Microsoft's wrapper around config/maintenance/sparse-checkout; the pieces are separate commands (docs/GIT-PARITY.md)";
     }
-    if (word == "shortlog") {
-        return "shortlog is not in 1git yet: planned, priority P1 (docs/GIT-PARITY.md)";
-    }
     if (word == "sparse-checkout") {
         return "sparse-checkout is not in 1git yet: planned, priority P2 (docs/GIT-PARITY.md)";
     }
@@ -77,9 +71,6 @@ pub str refusal(str word) {
     }
     if (word == "prune") {
         return "prune is not in 1git yet: planned, priority P2 (docs/GIT-PARITY.md)";
-    }
-    if (word == "reflog") {
-        return "reflog is not in 1git yet: planned, priority P1 (docs/GIT-PARITY.md)";
     }
     if (word == "repack") {
         return "repack is not in 1git yet: planned, priority P2 (docs/GIT-PARITY.md)";
@@ -257,9 +248,6 @@ pub str refusal(str word) {
     }
     if (word == "check-attr") {
         return "check-attr is not in 1git yet: planned, priority P2 (docs/GIT-PARITY.md)";
-    }
-    if (word == "check-ignore") {
-        return "check-ignore is not in 1git yet: planned, priority P1 (docs/GIT-PARITY.md)";
     }
     if (word == "check-mailmap") {
         return "check-mailmap is not in 1git yet: planned, priority P3 (docs/GIT-PARITY.md)";

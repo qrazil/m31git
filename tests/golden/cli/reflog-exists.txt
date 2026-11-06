@@ -1,0 +1,9 @@
+usage: 1git -reflog-exists <REF>
+
+exit 0 when a ref has a reflog, 1 when not
+
+arguments:
+  <REF>        the ref
+
+options:
+       --help  show this help

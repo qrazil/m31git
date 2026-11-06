@@ -238,6 +238,13 @@ case_() {
     local a=$WORK/side-ra b=$WORK/side-rb
     { dump_local "$a"; dump_remote "$SRV/repos/ra/r.git"; } > "$WORK/dump-a" 2>&1
     { dump_local "$b"; dump_remote "$SRV/repos/rb/r.git"; } > "$WORK/dump-b" 2>&1
+    # git 2.5x moves the tracking refs of the remote whose URL is pushed to; git 2.49 does not (1git follows
+    # the newer behaviour): the one case that pushes to a URL ignores that ref in both dumps.
+    if [ "$label" = "push: to a URL" ]; then
+        for d in "$WORK/dump-a" "$WORK/dump-b"; do
+            awk '/^(-- |## )/{skip=($0=="-- ./refs/remotes/origin/viaurl")} !skip && !/refs\/remotes\/origin\/viaurl/' "$d" > "$d.t" && mv "$d.t" "$d"
+        done
+    fi
     # `rebase` here prints no `Rebasing (n/m)` progress (docs/GIT-COMPAT.md)
     sed -i.bak 's/Rebasing ([0-9]*\/[0-9]*)\r\{0,1\}//' "$WORK/log-a.err" "$WORK/log-b.err"; rm -f "$WORK"/log-[ab].err.bak
     # git of 2.49 and later says "warning: redirecting to <url>" when the server redirects a credentialed
