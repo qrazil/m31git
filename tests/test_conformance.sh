@@ -13,7 +13,7 @@ if build git; then
     if [ "$conf_rc" = 0 ]; then
         note "conformance: $conf_summary"
     else
-        bad "conformance: a case differs from git" "$conf_summary" "$(printf '%s\n' "$conf_out" | grep '^FAIL' | head -8)"
+        bad "conformance: a case differs from git" "$conf_summary" "$(printf '%s\n' "$conf_out" | awk '/^FAIL /{show=1; n++} /^[^ F]/{show=0} show && n <= 8')"
     fi
     if python3 tests/conformance/gen.py --check; then
         note "conformance: docs/GIT-PARITY.md matches commands.tsv"

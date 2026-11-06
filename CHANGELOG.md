@@ -3,6 +3,15 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.37.3
+
+- **The conformance harness always prints what differs** for a failing case: the differing lines of stdout and of the state
+  (`<` git, `>` 1git), both exit statuses and the first lines of 1git's stderr, with no `-v`. `tests/test_conformance.sh`
+  puts those lines in the failure it reports (it used to keep only the `FAIL` line, so a CI log showed no diff). The state now
+  includes the full `config` of any repository made below the work tree (`init sub`, `init --bare sub`), where a macOS-only
+  difference in the probed `[core]` lines would show.
+- The advertised user agent is `1git/0.37.3`.
+
 ## 0.37.2
 
 - **Python 3.13 (the macOS runners): `http.server.CGIHTTPRequestHandler` is gone.** The test servers (`test_httpfetch.sh`,

@@ -106,6 +106,10 @@ dump() {
     done
     echo "== config"; cat .git/config 2>&1
     echo "== global"; cat ../home/gitconfig 2>&1
+    # a repository made below the work tree (init sub, clone): its config in full, so a difference shows
+    find . -path ./.git -prune -o -name config -type f -path '*/*' -print 2>/dev/null | sort | while IFS= read -r f; do
+        echo "== $f"; cat "$f"
+    done
     echo "== tree"
     find . -path ./.git -prune -o -type f ! -name '*.sample' ! -name description ! -path '*/info/exclude' -print 2>/dev/null | sort | while IFS= read -r f; do
         printf '%s %s\n' "$(git hash-object -- "$f" 2>/dev/null)" "$f"
@@ -187,11 +191,11 @@ while IFS= read -r line || [ -n "$line" ]; do
     printf '%s\t%s\t%s | %s\n' "$cmd" "$class" "$fx" "$args" >> "$RESULTS"
     if [ "$class" = FAIL ]; then
         printf 'FAIL %s | %s | %s  [%s]\n' "$fx" "$setup" "$args" "$why"
-        if [ "$VERBOSE" = 1 ]; then
-            diff "$G/out.n" "$O/out.n" | head -8 | sed 's/^/    out: /'
-            diff "$G/state.n" "$O/state.n" | head -8 | sed 's/^/    state: /'
-            head -3 "$O/err" | sed 's/^/    stderr(1git): /'
-        fi
+        # always: the differing lines ('<' git, '>' 1git) of stdout and of the state, and 1git's stderr
+        echo "    (< git, > 1git; exit: git $(cat "$G/rc"), 1git $(cat "$O/rc"))"
+        diff "$G/out.n" "$O/out.n" | head -20 | sed 's/^/    out: /'
+        diff "$G/state.n" "$O/state.n" | head -40 | sed 's/^/    state: /'
+        head -3 "$O/err" | sed 's/^/    stderr(1git): /'
     elif [ "$class" = MISSING ] && [ "$VERBOSE" = 1 ]; then
         printf 'MISSING %s | %s  (%s)\n' "$fx" "$args" "$(head -1 "$O/tr.err")"
     fi
