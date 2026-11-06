@@ -293,8 +293,9 @@ Known gaps (`known-failures.txt`): `reset --keep` with local changes (git refuse
 `cherry-pick A..B` across a merge, `rebase --onto` (git prints the "dropping ...
 already upstream" line), `rebase -i` of a branch that is already merged,
 `worktree list` column width (git 2.49 pads two spaces), `ls-remote` of a local
-path. `init` does not copy git's template directory (sample hooks,
-`description`, `info/exclude`): the harness ignores those files until it does.
+path. `init` copies git's template directory since 0.37.4; the harness still
+ignores the sample hooks, `description` and `info/exclude` so a host without the
+templates installed passes.
 
 What remains, in the order of the work plan: P1 `blame`/`annotate`,
 `grep`, `format-patch`/`am`/`apply`, `bisect`,

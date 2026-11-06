@@ -3,6 +3,18 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.37.4
+
+- **`-init` and `-clone` copy git's template directory**, as git does: `--template DIR` (an empty one: none), `$GIT_TEMPLATE_DIR`,
+  `init.templateDir`, else the installed one (`/usr/share/git-core/templates`, `/usr/local/share/...`, `/opt/homebrew/share/...`,
+  the Xcode command line tools'). Directories are made, files copied with their executable bit, nothing already there is
+  replaced. A new repository now has `hooks/*.sample`, `description`, `info/exclude` and `branches/` like git's (the `.git`
+  trees of `git init` and `1git -init` are identical on Linux).
+- **The conformance harness's filter for those files used `grep -v 'a\|b'`, which BSD grep (macOS) reads without
+  alternation**: the filter did nothing there and the template files git created showed as `?` entries (the macOS CI failure
+  of `init --bare sub`). It uses `-e` options now; it stays, so a host without git's templates installed still passes.
+- The advertised user agent is `1git/0.37.4`.
+
 ## 0.37.3
 
 - **The conformance harness always prints what differs** for a failing case: the differing lines of stdout and of the state

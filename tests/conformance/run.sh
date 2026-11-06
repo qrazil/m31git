@@ -98,7 +98,7 @@ dump() {
     git for-each-ref --format='%(refname) %(objectname) %(symref)' 2>&1
     echo "HEAD: $(git symbolic-ref -q HEAD 2>/dev/null || git rev-parse HEAD 2>&1)"
     git ls-files -s 2>&1
-    git status --porcelain=v2 -b --untracked-files=all 2>&1 | grep -v '\.sample$\|/description$\|/info/exclude$' 
+    git status --porcelain=v2 -b --untracked-files=all 2>&1 | grep -v -e '\.sample$' -e '/description$' -e '/info/exclude$' 
     git stash list 2>&1
     git reflog -n 20 HEAD 2>&1
     for f in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD ORIG_HEAD MERGE_MSG; do

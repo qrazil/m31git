@@ -60,8 +60,109 @@ pub str probe_volume(str gitdir) {
     return lines;
 }
 
-/// Make the skeleton of a repository at `gitdir`.
+/// Where git's templates (hooks/*.sample, description, info/exclude, ...) are: the
+/// installed directory of the git that is on this machine, the first of these that exists.
+List<str> default_template_dirs() {
+    return ["/usr/share/git-core/templates", "/usr/local/share/git-core/templates", "/opt/homebrew/share/git-core/templates", "/Library/Developer/CommandLineTools/usr/share/git-core/templates", "/usr/lib/git-core/templates"];
+}
+
+/// The template directory `git init` uses: `--template` (given), `$GIT_TEMPLATE_DIR`,
+/// `init.templateDir`, then the installed one. "" when there is none (or `--template=` is empty).
+pub str template_dir(str given, bool is_given, str gitdir) {
+    if (is_given) {
+        return given;
+    }
+    match (os.env("GIT_TEMPLATE_DIR")) {
+        case Some(str from_env): {
+            return from_env;
+        }
+        case None: {
+        }
+    }
+    match (GIT_config.effective(gitdir).get("init", "", "templatedir")) {
+        case Some(str from_config): {
+            if (from_config == "~" || from_config.starts_with("~/")) {
+                return os.env("HOME").or("") + from_config.substr(1, from_config.size());
+            }
+            return from_config;
+        }
+        case None: {
+        }
+    }
+    for (str candidate in default_template_dirs()) {
+        if (fs.is_directory(candidate)) {
+            return candidate;
+        }
+    }
+    return "";
+}
+
+/// Copy a template directory into the new git directory, as git does: directories made,
+/// files copied with their executable bit, nothing that is already there replaced.
+void copy_templates(str source, str target) {
+    match (fs.listdir(source)) {
+        case Ok(List<str> names): {
+            for (str name in names) {
+                str from = fs.join(source, name);
+                str to = fs.join(target, name);
+                if (fs.is_directory(from)) {
+                    match (fs.makedirs(to)) {
+                        case Ok(_): {
+                        }
+                        case Err(_): {
+                        }
+                    }
+                    copy_templates(from, to);
+                } else if (fs.is_file(from) && !fs.is_present(to)) {
+                    int perm = 0o644;
+                    match (fs.stat(from)) {
+                        case Ok(fs.Stat stat): {
+                            if (stat.perm() & 0o111 != 0) {
+                                perm = 0o755;
+                            }
+                        }
+                        case Err(_): {
+                        }
+                    }
+                    match (io.read_bytes(from)) {
+                        case Ok(bytes data): {
+                            match (io.open(to, mode: io.Mode.Write, perm: perm)) {
+                                case Ok(io.File file): {
+                                    match (file.write(data)) {
+                                        case Ok: {
+                                        }
+                                        case Err(_): {
+                                        }
+                                    }
+                                    match (file.close()) {
+                                        case Ok: {
+                                        }
+                                        case Err(_): {
+                                        }
+                                    }
+                                }
+                                case Err(_): {
+                                }
+                            }
+                        }
+                        case Err(_): {
+                        }
+                    }
+                }
+            }
+        }
+        case Err(_): {
+        }
+    }
+}
+
+/// Make the skeleton of a repository at `gitdir`, with the default templates.
 pub bool make_repo(str gitdir, bool is_bare, str branch, str format) {
+    return make_repo_with(gitdir, is_bare, branch, format, "", false);
+}
+
+/// `make_repo` with `--template` as given.
+pub bool make_repo_with(str gitdir, bool is_bare, str branch, str format, str template, bool is_template_given) {
     List<str> dirs = [gitdir, fs.join(gitdir, "objects"), fs.join(fs.join(gitdir, "objects"), "info"), fs.join(fs.join(gitdir, "objects"), "pack"), fs.join(gitdir, "refs"), fs.join(fs.join(gitdir, "refs"), "heads"), fs.join(fs.join(gitdir, "refs"), "tags"), fs.join(gitdir, "hooks"), fs.join(gitdir, "info")];
     for (str dir in dirs) {
         match (fs.makedirs(dir)) {
@@ -112,6 +213,10 @@ pub bool make_repo(str gitdir, bool is_bare, str branch, str format) {
     }
     match (io.write(fs.join(gitdir, "HEAD"), "ref: refs/heads/" + branch + "\n")) {
         case Ok(_): {
+            str templates = template_dir(template, is_template_given, gitdir);
+            if (templates != "" && fs.is_directory(templates)) {
+                copy_templates(templates, gitdir);
+            }
             return true;
         }
         case Err(_): {
@@ -161,7 +266,7 @@ pub int run_init(str start, List<str> overrides, List<str> argv) {
         }
         return 0;
     }
-    if (!make_repo(gitdir, is_bare, branch, format)) {
+    if (!make_repo_with(gitdir, is_bare, branch, format, parsed.value("template", ""), parsed.has("template"))) {
         io.eprint("fatal: cannot mkdir " + gitdir);
         return 128;
     }
