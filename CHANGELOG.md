@@ -3,6 +3,11 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.37.5
+
+- **Pins moved to `tui` v0.16.1 and `syntax` v0.5.1**, so a project that depends on both `m31git` and the current `tui`/`syntax` (m3dit)
+  resolves one source for each. No code change; built and tested on m31 v0.14.2.
+
 ## 0.37.4
 
 - **`-init` and `-clone` copy git's template directory**, as git does: `--template DIR` (an empty one: none), `$GIT_TEMPLATE_DIR`,
