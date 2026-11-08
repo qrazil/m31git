@@ -647,3 +647,83 @@ dirty | - | check-ignore --stdin @@ x.log\na.txt\n
 dirty | - | check-ignore -z x.log
 dirty | - | check-ignore empty-ish
 dirty | printf 'empty-ish/\n' >> .gitignore | check-ignore empty-ish empty-ish/sub/u.txt
+# --- 0.38.0: blame, annotate
+basic | - | blame -L 2,+2 a.txt
+basic | - | blame -L 3 a.txt
+basic | - | blame -L 1,2 -L 4,4 a.txt
+basic | - | blame -e a.txt
+basic | - | blame -s a.txt
+basic | - | blame -l -L1,1 a.txt
+basic | - | blame -f -n a.txt
+basic | - | blame -t -L1,2 a.txt
+basic | - | blame -b a.txt
+basic | - | blame --root a.txt
+basic | - | blame --date=short a.txt
+basic | - | blame --date=unix -L1,1 a.txt
+basic | - | blame --abbrev=12 -L1,1 a.txt
+basic | - | blame v1 a.txt
+basic | - | blame v1 -- a.txt
+basic | - | blame -- a.txt
+basic | - | blame --porcelain b.txt
+basic | - | blame --line-porcelain a.txt
+basic | - | blame -p -L 2,3 a.txt
+basic | - | blame topic -- b.txt
+basic | - | blame nonesuch.txt
+basic | - | blame nonesuchrev a.txt
+basic | - | blame -L 9,10 a.txt
+basic | - | annotate -L 2,3 a.txt
+basic | - | annotate v1 a.txt
+merge | - | blame a.txt
+merge | - | blame main.txt
+merge | - | blame --porcelain side.txt
+dirty | git stash -q | blame a.txt
+# --- 0.38.0: grep
+basic | - | grep -n one
+basic | - | grep -n -i ONE
+basic | - | grep -c e
+basic | - | grep -l e
+basic | - | grep -L alpha
+basic | - | grep -h alpha
+basic | - | grep -H alpha
+basic | - | grep -v one
+basic | - | grep -w gamma
+basic | - | grep -w alph
+basic | - | grep -F 'T.O'
+basic | - | grep -E 'a(l|b)'
+basic | - | grep 'a\(l\|b\)'
+basic | - | grep -E 'o+n'
+basic | - | grep 'o\+n'
+basic | - | grep -e one -e alpha
+basic | - | grep -e one --and -e e
+basic | - | grep -e one --or -e alpha
+basic | - | grep -o 'e[a-z]'
+basic | - | grep -on 'e'
+basic | - | grep -A1 TWO
+basic | - | grep -B1 three
+basic | - | grep -C1 -n TWO
+basic | - | grep -n -C1 -e one -e four
+basic | - | grep --heading -n e
+basic | - | grep --break --heading e
+basic | - | grep --cached e
+basic | - | grep e v1
+basic | - | grep -n e v1 v2
+basic | - | grep e HEAD~1 -- b.txt
+basic | - | grep e -- a.txt
+basic | - | grep -q one
+basic | - | grep -q nonesuch
+basic | - | grep nonesuch
+basic | - | grep -z e
+basic | - | grep --max-depth 0 e
+basic | - | grep --max-depth 1 e
+basic | cd dir | grep e
+basic | cd dir | grep --full-name e
+dirty | - | grep five
+dirty | - | grep --cached five
+dirty | - | grep -c untracked
+dirty | printf 'a\0b\n' > bin.dat && git add bin.dat | grep b
+dirty | printf 'a\0b\n' > bin.dat && git add bin.dat | grep -a b
+dirty | printf 'a\0b\n' > bin.dat && git add bin.dat | grep -I b
+dirty | printf 'a\0b\n' > bin.dat && git add bin.dat | grep -c b
+basic | - | grep '['
+basic | - | grep -E '('
+basic | - | grep

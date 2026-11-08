@@ -68,6 +68,9 @@ commands:
       -shortlog                summarize the history by author
       -describe                name a commit after the nearest tag
       -check-ignore            say which paths the ignore files ignore
+      -blame                   show who last changed each line of a file
+      -annotate                blame, in the older format
+      -grep                    search the files of the work tree, the index or trees for a pattern
       -cat-file                print an object's type, size or contents
       -ls-tree                 list a tree's entries
       -rev-parse               the object names a revision resolves to, and facts about the repository

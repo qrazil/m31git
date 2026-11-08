@@ -3,6 +3,20 @@
 Each release's changes in one place (the details are in `README.md` and
 `docs/GIT-COMPAT.md`).
 
+## 0.38.0
+
+- **`-blame` and `-annotate`**: the walk of mgit's blame view, as the command: `-L` ranges (`N,M`, `N,+K`, `,M`, several), `-e -s -l
+  -f -n -t -b --root --date --abbrev`, `--porcelain` and `--line-porcelain` (groups, `previous`, `boundary`). Not yet: `-w -M -C
+  --reverse --contents --incremental`, `-L /regex/`, following a file across a rename, and the uncommitted changes of the work
+  tree (it blames `HEAD` or the revision given).
+- **`-grep`**: the files of the work tree, the index (`--cached`) or trees; basic (default), extended (`--extended`, also `-P`) and fixed
+  patterns; `--regexp` (several, OR'd), `--also` (AND), `-n -i -w -v -l -L -c -h -H -o -q -A -B -C --heading --break --max-depth
+  -I -a -z --full-name`; binary files as `Binary file x matches`. Not yet: `--no-index --untracked -W -p --column -f`, `--or --not`
+  and parentheses in git's spelling, `-o` with `-i` prints the lowercased text. A line git writes as `-e a --and -e b` is
+  `--regexp a --also b` here.
+- The conformance harness is at 707 cases (616 pass, 0 unexpected failures, 10 known gaps, 81 missing).
+- The advertised user agent is `1git/0.38.0`.
+
 ## 0.37.5
 
 - **Pins moved to `tui` v0.16.1 and `syntax` v0.5.1**, so a project that depends on both `m31git` and the current `tui`/`syntax` (m3dit)

@@ -720,3 +720,45 @@
 -check-ignore a.log
 = git check-ignore -- a.log
 < git check-ignore a.log
+
+# --- blame, annotate, grep
+-blame a.txt
+= git blame a.txt
+< git blame a.txt
+-blame a.txt v1
+= git blame v1 a.txt
+< git blame v1 a.txt
+-blame a.txt --show-email --no-author --long --show-name --show-number --raw-time --blank-boundary --root --porcelain --line-porcelain --date short --abbrev 10 --lines 1,2
+= git blame -e -s -l -f -n -t -b --root -p --line-porcelain --date=short --abbrev=10 -L 1,2 a.txt
+-blame a.txt --porcelain
+= git blame -p a.txt
+< git blame -p a.txt
+-blame a.txt --lines 1,2
+= git blame -L 1,2 a.txt
+< git blame -L 1,2 a.txt
+-annotate a.txt --lines 1,2
+= git annotate -L 1,2 a.txt
+< git annotate -L 1,2 a.txt
+-annotate a.txt v1
+= git annotate v1 a.txt
+< git annotate v1 a.txt
+-grep one
+= git grep one
+< git grep one
+-grep one v1 --path a.txt
+= git grep one v1 -- a.txt
+< git grep one v1 -- a.txt
+-grep --regexp one --also two --line-number --ignore-case --word --invert --files-with-matches --files-without-match --count --no-filename --with-filename --extended --fixed --only-matching --quiet --after 1 --before 1 --context 2 --cached --skip-binary --text --nul --heading --break --max-depth 2 --full-name
+= git grep -e one --and -e two -n -i -w -v -l -L -c -h -H -E -F -o -q --after-context=1 --before-context=1 --context=2 --cached -I -a -z --heading --break --max-depth=2 --full-name
+-grep one --line-number --ignore-case
+= git grep -n -i one
+< git grep -n -i one
+-grep one --after 2
+= git grep --after-context=2 one
+< git grep -A 2 one
+-grep one --files-with-matches
+= git grep -l one
+< git grep -l one
+-grep --regexp one two
+= git grep -e one -e two
+< git grep -e one -e two

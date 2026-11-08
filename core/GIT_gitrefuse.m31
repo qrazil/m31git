@@ -30,9 +30,6 @@ pub str refusal(str word) {
     if (word == "gitk") {
         return "gitk is not in 1git: Tk GUI; mgit is the interactive client (docs/GIT-PARITY.md)";
     }
-    if (word == "grep") {
-        return "grep is not in 1git yet: planned, priority P1 (docs/GIT-PARITY.md)";
-    }
     if (word == "gui") {
         return "gui is not in 1git: Tk GUI; mgit is the interactive client (docs/GIT-PARITY.md)";
     }
@@ -77,12 +74,6 @@ pub str refusal(str word) {
     }
     if (word == "replace") {
         return "replace is not in 1git yet: planned, priority P3 (docs/GIT-PARITY.md)";
-    }
-    if (word == "annotate") {
-        return "annotate is not in 1git yet: planned, priority P1 (docs/GIT-PARITY.md)";
-    }
-    if (word == "blame") {
-        return "blame is not in 1git yet: planned, priority P1 (docs/GIT-PARITY.md)";
     }
     if (word == "bugreport") {
         return "bugreport is not in 1git: collects a report about git itself (docs/GIT-PARITY.md)";

@@ -73,6 +73,9 @@ commands:
       -shortlog                summarize the history by author
       -describe                name a commit after the nearest tag
       -check-ignore            say which paths the ignore files ignore
+      -blame                   show who last changed each line of a file
+      -annotate                blame, in the older format
+      -grep                    search the files of the work tree, the index or trees for a pattern
       -cat-file                print an object's type, size or contents
       -ls-tree                 list a tree's entries
       -rev-parse               the object names a revision resolves to, and facts about the repository
@@ -113,6 +116,50 @@ options:
        --executable on|off  set or clear the executable bit on what is staged
        --dry-run            show what would be staged
   --v, --verbose            list each file staged
+```
+
+## -annotate
+
+```
+usage: 1git -annotate [options] <FILE> [<REV>]
+
+blame, in the older format
+
+arguments:
+  <FILE>                 the file
+  [<REV>]                the revision to blame (default HEAD)
+
+options:
+       --help            show this help
+  --L, --lines RANGE...  only these lines: N,M or N,+K or ,M
+```
+
+## -blame
+
+```
+usage: 1git -blame [options] <FILE> [<REV>]
+
+show who last changed each line of a file
+
+arguments:
+  <FILE>                 the file
+  [<REV>]                the revision to blame (default HEAD)
+
+options:
+       --help            show this help
+  --e, --show-email      show the author email instead of the name
+       --no-author       suppress the author and the date
+       --long            the full commit name
+  --f, --show-name       show the file name of each line
+  --n, --show-number     show the line number in the original commit
+       --raw-time        show the time as seconds and zone
+       --blank-boundary  leave the name of boundary commits blank
+       --root            do not treat root commits as boundaries
+  --p, --porcelain       a format for programs
+       --line-porcelain  the porcelain format with the commit data on every line
+       --date STYLE      how dates are shown: iso, short, relative, unix, ...
+       --abbrev N        digits of the commit name
+  --L, --lines RANGE...  only these lines: N,M or N,+K or ,M
 ```
 
 ## -branch
@@ -493,6 +540,48 @@ options:
        --not-merged COMMIT...    only refs not merged into this commit
        --points-at OBJECT...     only refs that name this object
        --omit-empty              skip lines that came out empty
+```
+
+## -grep
+
+```
+usage: 1git -grep [options] [<PATTERN>] [<REV>...]
+
+search the files of the work tree, the index or trees for a pattern
+
+arguments:
+  [<PATTERN>]                 the pattern (basic regular expression); not needed when --regexp gives them
+  [<REV>...]                  search these trees instead of the work tree
+
+options:
+       --help                 show this help
+       --path PATH...         only these paths (put it last)
+  --e, --regexp PATTERN...    another pattern (any of them matches)
+       --also PATTERN...      a pattern the same line must match too (with the last --regexp)
+  --n, --line-number          show the line numbers
+  --i, --ignore-case          ignore case
+  --w, --word                 match whole words
+  --v, --invert               lines that do not match
+  --l, --files-with-matches   only the names of files with a match
+  --L, --files-without-match  only the names of files without a match
+  --c, --count                the number of matching lines per file
+       --no-filename          do not show file names
+  --H, --with-filename        show file names (the default)
+  --E, --extended             extended regular expressions
+  --F, --fixed                the pattern is a plain string
+  --o, --only-matching        print only the matching parts
+  --q, --quiet                print nothing, just the exit status
+  --A, --after N              lines after each match
+  --B, --before N             lines before each match
+  --C, --context N            lines around each match
+       --cached               search the index, not the work tree
+       --skip-binary          do not search binary files
+       --text                 search binary files as text
+  --z, --nul                  end file names with NUL
+       --heading              file names above their matches
+       --break                an empty line between files
+       --max-depth N          go down at most N directory levels
+       --full-name            file names from the top of the work tree
 ```
 
 ## -hash-object

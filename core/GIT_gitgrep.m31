@@ -1,0 +1,597 @@
+// `grep`: git's grammar in, git's bytes and exit statuses out. Searches the
+// tracked files of the work tree, the index (`--cached`) or trees (`<tree-ish>`
+// operands), with basic (default), extended (`-E`, and `-P` read as extended)
+// or fixed (`-F`) patterns; `-e` patterns are OR'd, `--and` joins two. Not in
+// 1git: `--no-index`, `--untracked`, `-W`/`-p`, `--column`, `-f FILE`, `--threads`,
+// parentheses in the pattern expression, `-P` features beyond extended syntax.
+
+import io;
+import os;
+import fs;
+import text.regex;
+import core.GIT_object;
+import core.GIT_index;
+import core.GIT_revparse;
+import core.GIT_gitcommon;
+import core.GIT_gitwrite;
+
+int refuse(str what) {
+    io.eprint("error: " + what + " of grep is not in 1git (see docs/GIT-PARITY.md)");
+    return 129;
+}
+
+str text_of(bytes data) {
+    return data.utf8().or("");
+}
+
+bool is_special(int code) {
+    return code == '.' || code == '*' || code == '[' || code == ']' || code == '^' || code == '$' || code == '\\' || code == '(' || code == ')' || code == '{' || code == '}' || code == '|' || code == '+' || code == '?';
+}
+
+/// A fixed string as the engine's syntax.
+str fixed_to_pattern(str literal) {
+    str out = "";
+    int run = 0;
+    for (int index in 0 .. literal.size()) {
+        int code = literal.byte_at(index);
+        if (code < 128 && is_special(code)) {
+            out = out + literal.substr(run, index) + "\\" + literal.substr(index, index + 1);
+            run = index + 1;
+        }
+    }
+    return out + literal.substr(run, literal.size());
+}
+
+/// A basic regular expression as the engine's (extended) syntax: `\(` `\)` `\{` `\}` `\|` `\+` `\?` are the
+/// operators, the bare characters are literal.
+str bre_to_pattern(str basic) {
+    str out = "";
+    int run = 0;
+    int index = 0;
+    int size = basic.size();
+    bool is_in_class = false;
+    while (index < size) {
+        int code = basic.byte_at(index);
+        if (code >= 128) {
+            index = index + 1;
+            continue;
+        }
+        str one = basic.substr(index, index + 1);
+        if (is_in_class) {
+            if (one == "]") {
+                is_in_class = false;
+            }
+            index = index + 1;
+            continue;
+        }
+        if (one == "[") {
+            is_in_class = true;
+            index = index + 1;
+            if (index < size && basic.substr(index, index + 1) == "^") {
+                index = index + 1;
+            }
+            if (index < size && basic.substr(index, index + 1) == "]") {
+                out = out + basic.substr(run, index) + "\\";
+                run = index;
+                index = index + 1;
+            }
+            continue;
+        }
+        if (one == "\\" && index + 1 < size) {
+            str next = basic.substr(index + 1, index + 2);
+            if (next == "(" || next == ")" || next == "{" || next == "}" || next == "|" || next == "+" || next == "?") {
+                out = out + basic.substr(run, index) + next;
+                run = index + 2;
+            }
+            index = index + 2;
+            continue;
+        }
+        if (one == "(" || one == ")" || one == "{" || one == "}" || one == "|" || one == "+" || one == "?") {
+            out = out + basic.substr(run, index) + "\\" + one;
+            run = index + 1;
+        }
+        index = index + 1;
+    }
+    return out + basic.substr(run, size);
+}
+
+/// Lower case outside escapes (`\D` stays `\D`).
+str lower_pattern(str pattern) {
+    str out = "";
+    int run = 0;
+    int index = 0;
+    while (index < pattern.size()) {
+        if (pattern.byte_at(index) == '\\') {
+            out = out + pattern.substr(run, index).to_lower();
+            out = out + pattern.substr(index, index + 2);
+            index = index + 2;
+            run = index;
+            continue;
+        }
+        index = index + 1;
+    }
+    if (run < pattern.size()) {
+        out = out + pattern.substr(run, pattern.size()).to_lower();
+    }
+    return out;
+}
+
+bool is_word_char(int code) {
+    return (code >= '0' && code <= '9') || (code >= 'a' && code <= 'z') || (code >= 'A' && code <= 'Z') || code == '_' || code >= 128;
+}
+
+/// One term of the expression: a pattern, possibly negated.
+type Term {
+    regex.Regex matcher;
+    bool is_not;
+}
+
+/// The text of every match of the term in the line; with -w only those that are whole words.
+List<str> matches_in(Term term, str line, bool is_word) {
+    List<str> out = [];
+    List<int> chars = line.chars();
+    for (regex.Match found in term.matcher.find_all(line)) {
+        int from = found.whole.start;
+        int to = found.whole.end;
+        if (is_word) {
+            if (from > 0 && is_word_char(chars[from - 1])) {
+                continue;
+            }
+            if (to < chars.size() && is_word_char(chars[to])) {
+                continue;
+            }
+        }
+        out.push(found.whole.text);
+    }
+    return out;
+}
+
+type Source {
+    str label;
+    str path;
+    bytes data;
+}
+
+/// Does the line match the expression: groups of terms joined by `--and`, groups OR'd.
+bool line_matches(List<List<Term>> groups, str subject, bool is_word) {
+    for (List<Term> group in groups) {
+        bool is_all = true;
+        for (Term term in group) {
+            bool is_hit = matches_in(term, subject, is_word).size() > 0;
+            if (term.is_not) {
+                is_hit = !is_hit;
+            }
+            if (!is_hit) {
+                is_all = false;
+                break;
+            }
+        }
+        if (is_all) {
+            return true;
+        }
+    }
+    return false;
+}
+
+pub int run_grep(str start, List<str> overrides, List<str> given) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    // -e PATTERN and the boolean words are kept in order
+    List<str> argv = [];
+    List<str> expression = [];
+    int at = 0;
+    while (at < given.size()) {
+        str word = given[at];
+        if (word == "--") {
+            for (int rest in at .. given.size()) {
+                argv.push(given[rest]);
+            }
+            break;
+        }
+        if ((word == "-e" || word == "--regexp") && at + 1 < given.size()) {
+            expression.push("e:" + given[at + 1]);
+            at = at + 2;
+            continue;
+        }
+        if (word.starts_with("-e") && word.size() > 2 && !word.starts_with("--")) {
+            expression.push("e:" + word.substr(2, word.size()));
+            at = at + 1;
+            continue;
+        }
+        if (word.starts_with("--regexp=")) {
+            expression.push("e:" + word.substr(9, word.size()));
+            at = at + 1;
+            continue;
+        }
+        if (word == "--and" || word == "--or" || word == "--not") {
+            expression.push(word);
+            at = at + 1;
+            continue;
+        }
+        // -A3 -B3 -C3 and -3
+        if (word.size() > 1 && word.starts_with("-") && word.substr(1, word.size()).parse_int().is_some()) {
+            argv.push("-C");
+            argv.push(word.substr(1, word.size()));
+            at = at + 1;
+            continue;
+        }
+        argv.push(word);
+        at = at + 1;
+    }
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-n --line-number", "-i --ignore-case", "-w --word-regexp", "-v --invert-match", "-l --files-with-matches --name-only", "-L --files-without-match", "-c --count", "-h", "-H", "-E --extended-regexp", "-G --basic-regexp", "-F --fixed-strings", "-P --perl-regexp", "-o --only-matching", "-q --quiet", "-A --after-context=", "-B --before-context=", "-C --context=", "--cached", "--no-index", "--untracked", "--no-exclude-standard", "--exclude-standard", "-r --recursive", "--no-recursive", "-I", "-a --text", "-z --null", "--heading", "--break", "--max-depth=", "-W --function-context", "-p --show-function", "--column", "-f=", "--threads=", "--full-name", "--no-color", "--color=?", "--max-count=", "-m=", "-s", "--all-match", "--no-heading", "--no-break", "-U"]);
+    int bad = GIT_gitwrite.check_opts(opts, "git grep [<options>] [-e] <pattern> [<rev>...] [[--] <path>...]");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.flag("no-index") || opts.flag("untracked") || opts.flag("function-context") || opts.flag("show-function") || opts.flag("column") || opts.has("f") || opts.has("threads") || opts.has("max-count") || opts.has("m") || opts.flag("all-match") || opts.flag("U")) {
+        return refuse("this option");
+    }
+    List<str> words = opts.words;
+    if (expression.size() == 0) {
+        if (words.size() == 0) {
+            return GIT_gitcommon.fatal("no pattern given");
+        }
+        expression.push("e:" + words[0]);
+        words = words.slice(1, words.size());
+    }
+    // revisions before `--`, then paths
+    List<str> trees = [];
+    List<str> path_words = [];
+    if (opts.has_dashes) {
+        trees = words;
+        path_words = opts.after;
+    } else {
+        bool is_paths = false;
+        for (str word in words) {
+            if (!is_paths) {
+                match (GIT_revparse.tree_id(context.gitdir, word)) {
+                    case Ok(_): {
+                        trees.push(word);
+                        continue;
+                    }
+                    case Err(_): {
+                        is_paths = true;
+                    }
+                }
+            }
+            path_words.push(word);
+        }
+    }
+    // the terms
+    bool is_fixed = opts.flag("fixed-strings");
+    bool is_extended = opts.flag("extended-regexp") || opts.flag("perl-regexp");
+    bool is_icase = opts.flag("ignore-case");
+    List<List<Term>> groups = [];
+    List<Term> current = [];
+    bool is_next_not = false;
+    for (str token in expression) {
+        if (token == "--and") {
+            continue;
+        }
+        if (token == "--or") {
+            groups.push(current);
+            current = [];
+            continue;
+        }
+        if (token == "--not") {
+            is_next_not = true;
+            continue;
+        }
+        str pattern = token.substr(2, token.size());
+        str source = pattern;
+        if (is_fixed) {
+            source = fixed_to_pattern(pattern);
+        } else if (!is_extended) {
+            source = bre_to_pattern(pattern);
+        }
+        if (is_icase) {
+            source = lower_pattern(source);
+        }
+        match (regex.compile(source)) {
+            case Ok(regex.Regex compiled): {
+                current.push(Term(compiled, is_next_not));
+                is_next_not = false;
+            }
+            case Err(_): {
+                io.eprint("fatal: command line, '" + pattern + "': Invalid regular expression");
+                return 128;
+            }
+        }
+    }
+    groups.push(current);
+    // --and joins terms of the same group; without it every term is a group of its own
+    List<List<Term>> merged = [];
+    bool is_joined = false;
+    for (str token in expression) {
+        if (token == "--and") {
+            is_joined = true;
+        }
+    }
+    if (is_joined) {
+        merged = groups;
+    } else {
+        for (List<Term> group in groups) {
+            for (Term term in group) {
+                merged.push([term]);
+            }
+        }
+    }
+    // the pathspecs, relative to where we are
+    List<GIT_gitcommon.Spec> specs = GIT_gitcommon.parse_specs(path_words, context.prefix);
+    if (specs.size() == 0 && context.prefix != "") {
+        specs = GIT_gitcommon.parse_specs([context.prefix], "");
+    }
+    int max_depth = -1;
+    if (opts.has("max-depth")) {
+        max_depth = opts.value("max-depth", "").parse_int().or(-1);
+    }
+    // the files to search
+    List<Source> sources = [];
+    if (trees.size() > 0) {
+        for (str tree in trees) {
+            match (GIT_revparse.tree_id(context.gitdir, tree)) {
+                case Ok(str tree_id): {
+                    match (GIT_object.flatten_tree(context.gitdir, tree_id)) {
+                        case Ok(Map<str, str> files): {
+                            List<str> names = [];
+                            for (str name in files.keys()) {
+                                names.push(name);
+                            }
+                            names.sort();
+                            for (str name in names) {
+                                if (!wanted_path(specs, name, context.prefix, max_depth)) {
+                                    continue;
+                                }
+                                match (GIT_object.read(context.gitdir, files.get(name).or(""))) {
+                                    case Ok(GIT_object.Object blob): {
+                                        sources.push(Source(tree + ":", name, blob.raw));
+                                    }
+                                    case Err(_): {
+                                    }
+                                }
+                            }
+                        }
+                        case Err(_): {
+                            return 128;
+                        }
+                    }
+                }
+                case Err(_): {
+                    return GIT_gitcommon.fatal("unable to resolve revision: " + tree);
+                }
+            }
+        }
+    } else {
+        List<GIT_index.Entry> entries = [];
+        match (GIT_index.read(context.gitdir)) {
+            case Ok(GIT_index.Index index): {
+                entries = index.entries;
+            }
+            case Err(_): {
+            }
+        }
+        for (GIT_index.Entry entry in entries) {
+            if (entry.stage != 0 || entry.is_gitlink()) {
+                continue;
+            }
+            str name = GIT_gitwrite.entry_path(entry);
+            if (!wanted_path(specs, name, context.prefix, max_depth)) {
+                continue;
+            }
+            if (opts.flag("cached")) {
+                match (GIT_object.read(context.gitdir, entry.id)) {
+                    case Ok(GIT_object.Object blob): {
+                        sources.push(Source("", name, blob.raw));
+                    }
+                    case Err(_): {
+                    }
+                }
+            } else {
+                str full = fs.join(context.root, name);
+                if (GIT_gitwrite.kind_of(full) != 1) {
+                    continue;
+                }
+                match (io.read_bytes(full)) {
+                    case Ok(bytes data): {
+                        sources.push(Source("", name, data));
+                    }
+                    case Err(_): {
+                    }
+                }
+            }
+        }
+    }
+    return search(context, opts, merged, sources);
+}
+
+bool wanted_path(List<GIT_gitcommon.Spec> specs, str name, str prefix, int max_depth) {
+    if (specs.size() > 0 && !GIT_gitcommon.spec_match(specs, name)) {
+        return false;
+    }
+    if (max_depth >= 0) {
+        str relative = name;
+        if (prefix != "" && name.starts_with(prefix + "/")) {
+            relative = name.substr(prefix.size() + 1, name.size());
+        }
+        if (relative.split("/").size() - 1 > max_depth) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// The path as shown: relative to where the command ran.
+str shown_path(GIT_gitcommon.Ctx context, GIT_gitwrite.Opts opts, Source source) {
+    str name = source.path;
+    if (!opts.flag("full-name") && context.prefix != "" && name.starts_with(context.prefix + "/")) {
+        name = name.substr(context.prefix.size() + 1, name.size());
+    }
+    return source.label + name;
+}
+
+int search(GIT_gitcommon.Ctx context, GIT_gitwrite.Opts opts, List<List<Term>> groups, List<Source> sources) {
+    bool is_count = opts.flag("count");
+    bool is_names = opts.flag("files-with-matches");
+    bool is_without = opts.flag("files-without-match");
+    bool is_quiet = opts.flag("quiet");
+    bool is_number = opts.flag("line-number");
+    bool is_word = opts.flag("word-regexp");
+    bool is_invert = opts.flag("invert-match");
+    bool is_only = opts.flag("only-matching");
+    bool is_icase = opts.flag("ignore-case");
+    bool is_heading = opts.flag("heading") && !opts.flag("no-heading");
+    bool is_break = opts.flag("break") && !opts.flag("no-break");
+    bool is_text = opts.flag("text");
+    bool is_skipping_binary = opts.flag("I");
+    int after = opts.value("after-context", opts.value("context", "0")).parse_int().or(0);
+    int before = opts.value("before-context", opts.value("context", "0")).parse_int().or(0);
+    str end = "\n";
+    str colon = ":";
+    if (opts.flag("null")) {
+        end = "\x00";
+    }
+    bool is_names_shown = !opts.flag("h");
+    bytes out = [];
+    bool is_any = false;
+    bool is_first_file = true;
+    for (Source source in sources) {
+        bool is_binary = false;
+        for (int byte in source.data) {
+            if (byte == 0) {
+                is_binary = true;
+                break;
+            }
+        }
+        if (is_binary && is_skipping_binary) {
+            continue;
+        }
+        str name = shown_path(context, opts, source);
+        List<str> lines = text_of(source.data).split("\n");
+        if (lines.size() > 0 && lines[lines.size() - 1] == "") {
+            lines.remove_at(lines.size() - 1);
+        }
+        List<bool> hit = [];
+        int hits = 0;
+        for (str line in lines) {
+            str subject = line;
+            if (is_icase) {
+                subject = line.to_lower();
+            }
+            bool is_hit = line_matches(groups, subject, is_word);
+            if (is_invert) {
+                is_hit = !is_hit;
+            }
+            hit.push(is_hit);
+            if (is_hit) {
+                hits = hits + 1;
+            }
+        }
+        if (hits > 0) {
+            is_any = true;
+        }
+        if (is_quiet) {
+            if (is_any) {
+                return 0;
+            }
+            continue;
+        }
+        if (is_without) {
+            if (hits == 0) {
+                out.extend((name + end).to_bytes());
+            }
+            continue;
+        }
+        if (hits == 0) {
+            continue;
+        }
+        if (is_names) {
+            out.extend((name + end).to_bytes());
+            continue;
+        }
+        if (is_count) {
+            out.extend((name + colon + hits.to_str() + end).to_bytes());
+            continue;
+        }
+        if (is_binary && !is_text) {
+            out.extend(("Binary file " + name + " matches\n").to_bytes());
+            continue;
+        }
+        if (is_break && !is_first_file) {
+            out.extend("\n".to_bytes());
+        }
+        is_first_file = false;
+        if (is_heading) {
+            out.extend((name + end).to_bytes());
+        }
+        // lines to print: hits and their context
+        List<bool> shown = [];
+        for (int index in 0 .. lines.size()) {
+            shown.push(false);
+        }
+        for (int index in 0 .. lines.size()) {
+            if (hit[index]) {
+                int low = index - before;
+                if (low < 0) {
+                    low = 0;
+                }
+                int high = index + after;
+                if (high > lines.size() - 1) {
+                    high = lines.size() - 1;
+                }
+                for (int near in low .. high + 1) {
+                    shown[near] = true;
+                }
+            }
+        }
+        bool is_context = before > 0 || after > 0;
+        int last = -2;
+        for (int index in 0 .. lines.size()) {
+            if (!shown[index]) {
+                continue;
+            }
+            if (is_context && last >= 0 && index > last + 1) {
+                out.extend("--\n".to_bytes());
+            }
+            last = index;
+            str sep = colon;
+            if (!hit[index]) {
+                sep = "-";
+            }
+            str prefix = "";
+            if (!is_heading && is_names_shown) {
+                prefix = name + sep;
+                if (opts.flag("null")) {
+                    prefix = name + "\x00";
+                }
+            }
+            if (is_number) {
+                prefix = prefix + (index + 1).to_str() + sep;
+            }
+            if (is_only && hit[index] && !is_invert) {
+                str subject = lines[index];
+                if (is_icase) {
+                    subject = lines[index].to_lower();
+                }
+                for (List<Term> group in groups) {
+                    for (Term term in group) {
+                        for (str piece in matches_in(term, subject, is_word)) {
+                            out.extend((prefix + piece + "\n").to_bytes());
+                        }
+                    }
+                }
+                continue;
+            }
+            out.extend((prefix + lines[index] + "\n").to_bytes());
+        }
+    }
+    if (!is_quiet) {
+        GIT_gitwrite.put_bytes(out);
+    }
+    if (is_any) {
+        return 0;
+    }
+    return 1;
+}

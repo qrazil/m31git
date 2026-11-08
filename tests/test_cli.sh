@@ -323,9 +323,9 @@ if build git && build t_cli; then
         bad "cli refusal: untranslatable line" "status $rc" "$(cat "$cli_work/g.err")"
     fi
     # another bare word has no hint, only the usual refusal
-    err=$("$cli_one" blame x 2>&1 >/dev/null)
+    err=$("$cli_one" bisect x 2>&1 >/dev/null)
     rc=$?
-    [ "$rc" = 2 ] && printf '%s' "$err" | grep -qF "got 'blame'" && ! printf '%s' "$err" | grep -q hint && note "cli refusal: another bare word is Oro's usual refusal, with no hint" || bad "cli refusal: bare unknown word" "status $rc: $err"
+    [ "$rc" = 2 ] && printf '%s' "$err" | grep -qF "got 'bisect'" && ! printf '%s' "$err" | grep -q hint && note "cli refusal: another bare word is Oro's usual refusal, with no hint" || bad "cli refusal: bare unknown word" "status $rc: $err"
     # the program's own re-runs (pull) are the one place git's grammar is read
     out=$(cd "$cli_work/fx" && M31GIT_INTERNAL_ARGV=1 "$cli_one" log -n1 --format=%s 2>&1)
     [ "$out" = second ] && note "cli: M31GIT_INTERNAL_ARGV=1 (set by pull for its own re-runs) reads git's grammar" || bad "cli: internal argv" "$out"

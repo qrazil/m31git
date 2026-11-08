@@ -1,0 +1,23 @@
+usage: 1git -blame [options] <FILE> [<REV>]
+
+show who last changed each line of a file
+
+arguments:
+  <FILE>                 the file
+  [<REV>]                the revision to blame (default HEAD)
+
+options:
+       --help            show this help
+  --e, --show-email      show the author email instead of the name
+       --no-author       suppress the author and the date
+       --long            the full commit name
+  --f, --show-name       show the file name of each line
+  --n, --show-number     show the line number in the original commit
+       --raw-time        show the time as seconds and zone
+       --blank-boundary  leave the name of boundary commits blank
+       --root            do not treat root commits as boundaries
+  --p, --porcelain       a format for programs
+       --line-porcelain  the porcelain format with the commit data on every line
+       --date STYLE      how dates are shown: iso, short, relative, unix, ...
+       --abbrev N        digits of the commit name
+  --L, --lines RANGE...  only these lines: N,M or N,+K or ,M

@@ -1,0 +1,11 @@
+usage: 1git -annotate [options] <FILE> [<REV>]
+
+blame, in the older format
+
+arguments:
+  <FILE>                 the file
+  [<REV>]                the revision to blame (default HEAD)
+
+options:
+       --help            show this help
+  --L, --lines RANGE...  only these lines: N,M or N,+K or ,M

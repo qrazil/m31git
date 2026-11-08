@@ -31,6 +31,8 @@ import core.GIT_gitconfigcmd;
 import core.GIT_gitplumb;
 import core.GIT_gitobj;
 import core.GIT_gitinfo;
+import core.GIT_gitblame;
+import core.GIT_gitgrep;
 import core.GIT_gitrefuse;
 import core.GIT_hash;
 import core.GIT_repository;
@@ -263,6 +265,12 @@ str default_remote(Env env, bool is_push) {
 /// refusals for combinations that make no sense. Returns the complaint.
 str adjust(GIT_clitable.Cmd cmd, args.Parsed parsed, Env env, List<str> opts, List<str> words, List<str> after) {
     str word = cmd.word;
+    if ((word == "blame" || word == "annotate") && words.size() == 2) {
+        // git writes the revision first
+        str file_word = words[0];
+        words[0] = words[1];
+        words[1] = file_word;
+    }
     if (word == "cat-file" && words.size() == 1 && opts.size() == 0) {
         // `-cat-file OBJECT` prints the object, like -p
         opts.push("-p");
@@ -619,6 +627,15 @@ pub int run_git(str git, Env env, List<str> argv) {
     if (git == "check-ignore") {
         return GIT_gitinfo.run_check_ignore(cwd, overrides, given);
     }
+    if (git == "blame") {
+        return GIT_gitblame.run_blame(cwd, overrides, given);
+    }
+    if (git == "annotate") {
+        return GIT_gitblame.run_annotate(cwd, overrides, given);
+    }
+    if (git == "grep") {
+        return GIT_gitgrep.run_grep(cwd, overrides, given);
+    }
     if (git == "config") {
         return GIT_gitconfigcmd.run_config(cwd, overrides, given);
     }
@@ -840,7 +857,7 @@ bool is_in(str word, str choices) {
 }
 
 List<str> git_words() {
-    return ["status", "log", "show", "diff", "add", "rm", "mv", "restore", "reset", "commit", "switch", "checkout", "branch", "tag", "stash", "cherry-pick", "revert", "merge", "rebase", "clean", "worktree", "clone", "init", "fetch", "pull", "push", "remote", "ls-remote", "cat-file", "ls-tree", "rev-parse", "config", "merge-base", "rev-list", "symbolic-ref", "update-ref", "show-ref", "for-each-ref", "hash-object", "write-tree", "commit-tree", "ls-files", "check-ref-format", "reflog", "shortlog", "describe", "check-ignore"];
+    return ["status", "log", "show", "diff", "add", "rm", "mv", "restore", "reset", "commit", "switch", "checkout", "branch", "tag", "stash", "cherry-pick", "revert", "merge", "rebase", "clean", "worktree", "clone", "init", "fetch", "pull", "push", "remote", "ls-remote", "cat-file", "ls-tree", "rev-parse", "config", "merge-base", "rev-list", "symbolic-ref", "update-ref", "show-ref", "for-each-ref", "hash-object", "write-tree", "commit-tree", "ls-files", "check-ref-format", "reflog", "shortlog", "describe", "check-ignore", "blame", "annotate", "grep"];
 }
 
 /// The index of the git command in `argv` once git's own leading options
@@ -1478,6 +1495,27 @@ Result<List<str>, str> shape(Env env, Rewrite work) {
         GIT_clitable.append(paths, work.after);
         if (paths.size() > 0) {
             add_list(work, "path", paths);
+        }
+    } else if (word == "grep") {
+        // the pattern and the trees, then the paths after `--`
+        GIT_clitable.append(operands, every);
+        if (work.after.size() > 0) {
+            add_list(work, "path", work.after);
+        }
+    } else if (word == "blame" || word == "annotate") {
+        // git: [REV] FILE; here FILE then REV
+        if (every.size() == 2) {
+            operands.push(every[1]);
+            operands.push(every[0]);
+        } else {
+            GIT_clitable.append(operands, every);
+        }
+        List<str> after_dashes = work.after;
+        if (after_dashes.size() > 0) {
+            operands = [after_dashes[0]];
+            if (every.size() == 1) {
+                operands.push(every[0]);
+            }
         }
     } else if (word == "checkout") {
         // the target, then the paths to restore from it

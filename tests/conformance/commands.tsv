@@ -18,7 +18,7 @@ fetch	porcelain	kept	partial	IMPLEMENT	P1	--recurse-submodules, bundle-uri, prot
 format-patch	porcelain	kept	missing	IMPLEMENT	P1	
 gc	porcelain	kept	missing	IMPLEMENT	P2	
 gitk	porcelain	kept	missing	OUT	-	Tk GUI; mgit is the interactive client
-grep	porcelain	kept	missing	IMPLEMENT	P1	
+grep	porcelain	kept	partial	IMPLEMENT	P1	0.38: work tree, --cached, trees, -e (several, OR), --and, -n -i -w -v -l -L -c -h -H -E -F -P(as -E) -o -q -A -B -C --heading --break --max-depth -I -a -z --full-name; --no-index, --untracked, -W, -p, --column, -f, --or/--not and parentheses (only --and and several -e), -o with -i prints the lowercase text missing
 gui	porcelain	kept	missing	OUT	-	Tk GUI; mgit is the interactive client
 init	porcelain	kept	partial	IMPLEMENT	P2	--object-format sha256 and --ref-format are read by the library; --template, --separate-git-dir, --shared checked
 log	porcelain	kept	partial	IMPLEMENT	P1	-L, --follow done, --show-signature, --pretty trailers and %(describe), --notes missing
@@ -56,8 +56,8 @@ refs	ancillary-manipulators	kept	partial	IMPLEMENT	P3	1git -refs is its own list
 remote	ancillary-manipulators	kept	partial	IMPLEMENT	P2	update, set-branches, prune done; show -n
 repack	ancillary-manipulators	kept	missing	IMPLEMENT	P2	
 replace	ancillary-manipulators	kept	missing	IMPLEMENT	P3	replace refs are read by the object layer? no: LATER read support too
-annotate	ancillary-interrogators	kept (same as blame, other output)	missing	IMPLEMENT	P1	with blame
-blame	ancillary-interrogators	kept	missing	IMPLEMENT	P1	the library of mgit's blame view exists
+annotate	ancillary-interrogators	kept (same as blame, other output)	partial	IMPLEMENT	P1	0.38: as blame, git annotate format
+blame	ancillary-interrogators	kept	partial	IMPLEMENT	P1	0.38: plain, -L N,M|N,+K|,M (several), -e -s -l -f -n -t -b --root --date --abbrev --porcelain --line-porcelain; -w -M -C --reverse --contents --incremental, -L /regex/ and :funcname, following a file across a rename, and the work tree's uncommitted changes missing
 bugreport	ancillary-interrogators	kept	missing	OUT	-	collects a report about git itself
 count-objects	ancillary-interrogators	kept	missing	IMPLEMENT	P3	
 diagnose	ancillary-interrogators	kept	missing	OUT	-	zip of diagnostics for git bug reports

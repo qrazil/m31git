@@ -1,0 +1,37 @@
+usage: 1git -grep [options] [<PATTERN>] [<REV>...]
+
+search the files of the work tree, the index or trees for a pattern
+
+arguments:
+  [<PATTERN>]                 the pattern (basic regular expression); not needed when --regexp gives them
+  [<REV>...]                  search these trees instead of the work tree
+
+options:
+       --help                 show this help
+       --path PATH...         only these paths (put it last)
+  --e, --regexp PATTERN...    another pattern (any of them matches)
+       --also PATTERN...      a pattern the same line must match too (with the last --regexp)
+  --n, --line-number          show the line numbers
+  --i, --ignore-case          ignore case
+  --w, --word                 match whole words
+  --v, --invert               lines that do not match
+  --l, --files-with-matches   only the names of files with a match
+  --L, --files-without-match  only the names of files without a match
+  --c, --count                the number of matching lines per file
+       --no-filename          do not show file names
+  --H, --with-filename        show file names (the default)
+  --E, --extended             extended regular expressions
+  --F, --fixed                the pattern is a plain string
+  --o, --only-matching        print only the matching parts
+  --q, --quiet                print nothing, just the exit status
+  --A, --after N              lines after each match
+  --B, --before N             lines before each match
+  --C, --context N            lines around each match
+       --cached               search the index, not the work tree
+       --skip-binary          do not search binary files
+       --text                 search binary files as text
+  --z, --nul                  end file names with NUL
+       --heading              file names above their matches
+       --break                an empty line between files
+       --max-depth N          go down at most N directory levels
+       --full-name            file names from the top of the work tree

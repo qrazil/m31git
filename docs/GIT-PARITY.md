@@ -84,7 +84,7 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 (git's own deprecation record), OUT (belongs to another ecosystem).
 
 <!-- matrix:begin -->
-148 git commands in the matrix: 1git state done 9, partial 41, missing 98; decision IMPLEMENT 116, LATER 8, DROP 4, OUT of scope 20.
+148 git commands in the matrix: 1git state done 9, partial 44, missing 95; decision IMPLEMENT 116, LATER 8, DROP 4, OUT of scope 20.
 
 | command | group | git 2.49 | 1git | decision | note |
 |---|---|---|---|---|---|
@@ -107,7 +107,7 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 | `format-patch` | porcelain | kept | missing | IMPLEMENT P1 |  |
 | `gc` | porcelain | kept | missing | IMPLEMENT P2 |  |
 | `gitk` | porcelain | kept | missing | OUT | Tk GUI; mgit is the interactive client |
-| `grep` | porcelain | kept | missing | IMPLEMENT P1 |  |
+| `grep` | porcelain | kept | partial | IMPLEMENT P1 | 0.38: work tree, --cached, trees, -e (several, OR), --and, -n -i -w -v -l -L -c -h -H -E -F -P(as -E) -o -q -A -B -C --heading --break --max-depth -I -a -z --full-name; --no-index, --untracked, -W, -p, --column, -f, --or/--not and parentheses (only --and and several -e), -o with -i prints the lowercase text missing |
 | `gui` | porcelain | kept | missing | OUT | Tk GUI; mgit is the interactive client |
 | `init` | porcelain | kept | partial | IMPLEMENT P2 | --object-format sha256 and --ref-format are read by the library; --template, --separate-git-dir, --shared checked |
 | `log` | porcelain | kept | partial | IMPLEMENT P1 | -L, --follow done, --show-signature, --pretty trailers and %(describe), --notes missing |
@@ -145,8 +145,8 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 | `remote` | ancillary-manipulators | kept | partial | IMPLEMENT P2 | update, set-branches, prune done; show -n |
 | `repack` | ancillary-manipulators | kept | missing | IMPLEMENT P2 |  |
 | `replace` | ancillary-manipulators | kept | missing | IMPLEMENT P3 | replace refs are read by the object layer? no: LATER read support too |
-| `annotate` | ancillary-interrogators | kept (same as blame, other output) | missing | IMPLEMENT P1 | with blame |
-| `blame` | ancillary-interrogators | kept | missing | IMPLEMENT P1 | the library of mgit's blame view exists |
+| `annotate` | ancillary-interrogators | kept (same as blame, other output) | partial | IMPLEMENT P1 | 0.38: as blame, git annotate format |
+| `blame` | ancillary-interrogators | kept | partial | IMPLEMENT P1 | 0.38: plain, -L N,M/N,+K/,M (several), -e -s -l -f -n -t -b --root --date --abbrev --porcelain --line-porcelain; -w -M -C --reverse --contents --incremental, -L /regex/ and :funcname, following a file across a rename, and the work tree's uncommitted changes missing |
 | `bugreport` | ancillary-interrogators | kept | missing | OUT | collects a report about git itself |
 | `count-objects` | ancillary-interrogators | kept | missing | IMPLEMENT P3 |  |
 | `diagnose` | ancillary-interrogators | kept | missing | OUT | zip of diagnostics for git bug reports |
@@ -280,13 +280,13 @@ plumbing others call, P3 the rest), LATER (in scope, waits on something), DROP
 Run `bash tests/conformance/run.sh ./1git` for the current table; the figures
 below are from the commit that carries this file.
 
-| measure | at 0.37.0 |
+| measure | at 0.38.0 |
 |---|---|
-| git commands in the matrix | 148 (done 9, partial 41, missing 98) |
+| git commands in the matrix | 148 (done 9, partial 44, missing 95) |
 | decisions | IMPLEMENT 116, LATER 8, DROP 4 (`whatchanged`, `pack-redundant`, `filter-branch`, `help`), OUT of scope 20 |
-| conformance cases | 629 over 75 commands: **528 pass**, 0 unexpected failures, 10 known gaps, 91 missing (no 1git spelling yet); numbers of 0.36.0 were 585 / 469 / 10 / 106 |
+| conformance cases | 707 over 75 commands: **616 pass**, 0 unexpected failures, 10 known gaps, 81 missing (no 1git spelling yet); 0.36.0 had 585 / 469 / 10 / 106 |
 | commands with a passing case | 38 |
-| option spellings in `tests/cli_cases.txt` | 515 options covered, 130 git spellings migrated |
+| option spellings in `tests/cli_cases.txt` | 556 options covered, 142 git spellings migrated |
 
 Known gaps (`known-failures.txt`): `reset --keep` with local changes (git refuses,
 1git resets), `tag --sort=-creatordate` with equal dates, `stash push <path>`,
@@ -297,8 +297,7 @@ path. `init` copies git's template directory since 0.37.4; the harness still
 ignores the sample hooks, `description` and `info/exclude` so a host without the
 templates installed passes.
 
-What remains, in the order of the work plan: P1 `blame`/`annotate`,
-`grep`, `format-patch`/`am`/`apply`, `bisect`,
+What remains, in the order of the work plan: P1 `format-patch`/`am`/`apply`, `bisect`,
 `submodule`, `check-ignore`, `rebase --rebase-merges --update-refs`,
 `file://` remotes, and the missing options of the commands that exist; then P2
 (`gc`, `maintenance`, `fsck`, `repack`, `prune`, `notes`, `bundle`,

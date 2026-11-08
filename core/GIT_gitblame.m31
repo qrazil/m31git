@@ -1,0 +1,479 @@
+// `blame` and `annotate`: git's grammar in, git's bytes and exit statuses out.
+// The walk is `diff/GIT_blame.m31` (the one mgit's blame view uses); this is the
+// command: the options, `-L`, the default, `--porcelain` and `--line-porcelain`
+// formats. Differences from git are listed in docs/GIT-PARITY.md (no rename
+// following, the work tree's uncommitted changes are not blamed, no -w -M -C).
+
+import io;
+import os;
+import fs;
+import diff.GIT_blame;
+import core.GIT_object;
+import core.GIT_pathtree;
+import core.GIT_refs;
+import core.GIT_revparse;
+import core.GIT_gitcommon;
+import core.GIT_gitwrite;
+
+int refuse(str what) {
+    io.eprint("error: " + what + " of blame is not in 1git (see docs/GIT-PARITY.md)");
+    return 129;
+}
+
+str text_of(bytes data) {
+    return data.utf8().or("");
+}
+
+/// What is shown about a commit.
+type Who {
+    str name;
+    str email;
+    int when;
+    int offset;
+    str zone;
+    str committer_name;
+    str committer_email;
+    int committer_when;
+    str committer_zone;
+    str summary;
+    str parent;
+}
+
+Who who_of(str gitdir, str commit_id, str path) {
+    Who who = Who("", "", 0, 0, "+0000", "", "", 0, "+0000", "", "");
+    match (GIT_object.read(gitdir, commit_id)) {
+        case Ok(GIT_object.Object object): {
+            match (object.body) {
+                case Commit(GIT_object.Commit commit): {
+                    who.name = text_of(commit.author.name);
+                    who.email = text_of(commit.author.email);
+                    who.when = commit.author.when;
+                    who.offset = commit.author.offset;
+                    who.zone = commit.author.zone;
+                    who.committer_name = text_of(commit.committer.name);
+                    who.committer_email = text_of(commit.committer.email);
+                    who.committer_when = commit.committer.when;
+                    who.committer_zone = commit.committer.zone;
+                    who.summary = first_line(commit.message);
+                    if (commit.parents.size() > 0) {
+                        match (GIT_pathtree.entry_at(gitdir, parent_tree(gitdir, commit.parents[0]), path)) {
+                            case Some(_): {
+                                who.parent = commit.parents[0];
+                            }
+                            case None: {
+                            }
+                        }
+                    }
+                }
+                case Blob: {
+                }
+                case Tree(_): {
+                }
+                case Tag(_): {
+                }
+            }
+        }
+        case Err(_): {
+        }
+    }
+    return who;
+}
+
+str parent_tree(str gitdir, str commit_id) {
+    match (GIT_object.read(gitdir, commit_id)) {
+        case Ok(GIT_object.Object object): {
+            match (object.body) {
+                case Commit(GIT_object.Commit commit): {
+                    return commit.tree;
+                }
+                case Blob: {
+                    return "";
+                }
+                case Tree(_): {
+                    return "";
+                }
+                case Tag(_): {
+                    return "";
+                }
+            }
+        }
+        case Err(_): {
+            return "";
+        }
+    }
+}
+
+str first_line(bytes message) {
+    for (str line in text_of(message).split("\n")) {
+        if (line.trim() != "") {
+            return line;
+        }
+    }
+    return "";
+}
+
+int digits_of(int number) {
+    return number.to_str().size();
+}
+
+str pad_right(str text, int width) {
+    str out = text;
+    int length = text.chars().size();
+    while (length < width) {
+        out = out + " ";
+        length = length + 1;
+    }
+    return out;
+}
+
+str pad_left(str text, int width) {
+    str out = text;
+    while (out.size() < width) {
+        out = " " + out;
+    }
+    return out;
+}
+
+/// `-L` ranges as 1-based inclusive pairs over a file of `total` lines; `ok` false after a message.
+type Ranges {
+    bool is_ok;
+    List<int> from;
+    List<int> to;
+}
+
+Ranges parse_ranges(List<str> given, int total) {
+    Ranges out = Ranges(true, [], []);
+    for (str spec in given) {
+        int comma = spec.index_of(",").or(-1);
+        str left = spec;
+        str right = "";
+        if (comma >= 0) {
+            left = spec.substr(0, comma);
+            right = spec.substr(comma + 1, spec.size());
+        }
+        if (left.starts_with("/") || right.starts_with("/") || left.starts_with(":") || right.starts_with(":")) {
+            io.eprint("error: -L with a regular expression or a function name is not in 1git (see docs/GIT-PARITY.md)");
+            out.is_ok = false;
+            return out;
+        }
+        int start = 1;
+        int end = total;
+        if (left != "") {
+            match (left.parse_int()) {
+                case Some(int number): {
+                    start = number;
+                }
+                case None: {
+                    io.eprint("fatal: -L invalid line range: " + spec);
+                    out.is_ok = false;
+                    return out;
+                }
+            }
+        }
+        if (right != "") {
+            if (right.starts_with("+")) {
+                end = start + right.substr(1, right.size()).parse_int().or(1) - 1;
+            } else if (right.starts_with("-")) {
+                end = start;
+                start = end - right.substr(1, right.size()).parse_int().or(1) + 1;
+            } else {
+                match (right.parse_int()) {
+                    case Some(int number): {
+                        end = number;
+                    }
+                    case None: {
+                        io.eprint("fatal: -L invalid line range: " + spec);
+                        out.is_ok = false;
+                        return out;
+                    }
+                }
+            }
+        }
+        if (start > end) {
+            int swap = start;
+            start = end;
+            end = swap;
+        }
+        if (start < 1) {
+            start = 1;
+        }
+        if (start > total) {
+            io.eprint("fatal: file has only " + total.to_str() + " lines");
+            out.is_ok = false;
+            return out;
+        }
+        if (end > total) {
+            end = total;
+        }
+        out.from.push(start);
+        out.to.push(end);
+    }
+    return out;
+}
+
+pub int run_blame(str start, List<str> overrides, List<str> argv) {
+    return run(start, overrides, argv, false);
+}
+
+pub int run_annotate(str start, List<str> overrides, List<str> argv) {
+    return run(start, overrides, argv, true);
+}
+
+int run(str start, List<str> overrides, List<str> argv, bool is_annotate) {
+    GIT_gitcommon.Opened opened = GIT_gitcommon.open(start, overrides);
+    if (!opened.ok) {
+        return 128;
+    }
+    GIT_gitcommon.Ctx context = opened.ctx;
+    GIT_gitwrite.Opts opts = GIT_gitwrite.parse_opts(argv, ["-L=", "-e --show-email", "-s", "-l", "-f --show-name", "-n --show-number", "-t", "-b", "--root", "-p --porcelain", "--line-porcelain", "--incremental", "-w", "-M", "-C", "--date=", "--abbrev=", "--contents=", "-S=", "--reverse", "--first-parent", "--progress", "--no-progress", "--score-debug", "-c", "--encoding="]);
+    int bad = GIT_gitwrite.check_opts(opts, "git blame [<options>] [<rev-opts>] [<rev>] [--] <file>");
+    if (bad >= 0) {
+        return bad;
+    }
+    if (opts.flag("incremental") || opts.flag("w") || opts.flag("M") || opts.flag("C") || opts.has("contents") || opts.has("S") || opts.flag("reverse") || opts.flag("first-parent") || opts.flag("score-debug") || opts.has("encoding")) {
+        return refuse("this option");
+    }
+    List<str> before = opts.words;
+    List<str> after = opts.after;
+    str rev = "HEAD";
+    str file = "";
+    if (opts.has_dashes) {
+        if (after.size() != 1 || before.size() > 1) {
+            io.eprint("usage: git blame [<options>] [<rev-opts>] [<rev>] [--] <file>");
+            return 129;
+        }
+        file = after[0];
+        if (before.size() == 1) {
+            rev = before[0];
+        }
+    } else if (before.size() == 1) {
+        file = before[0];
+    } else if (before.size() == 2) {
+        rev = before[0];
+        file = before[1];
+        // `blame <file> <rev>` is not git's order, but `blame <rev> <file>` is
+    } else {
+        io.eprint("usage: git blame [<options>] [<rev-opts>] [<rev>] [--] <file>");
+        return 129;
+    }
+    str rooted = GIT_gitwrite.rooted(context.prefix, file);
+    str commit = "";
+    match (GIT_revparse.commit_id(context.gitdir, rev)) {
+        case Ok(str found): {
+            commit = found;
+        }
+        case Err(_): {
+            io.eprint("fatal: bad revision '" + rev + "'");
+            return 128;
+        }
+    }
+    List<GIT_blame.Line> lines = [];
+    match (GIT_blame.blame(context.gitdir, commit, rooted, GIT_blame.Quiet())) {
+        case Ok(List<GIT_blame.Line> found): {
+            lines = found;
+        }
+        case Err(GIT_blame.Error error): {
+            match (error) {
+                case NoSuchPath(_): {
+                    io.eprint("fatal: no such path '" + rooted + "' in " + rev);
+                }
+                case Rev(_): {
+                    io.eprint("fatal: bad revision '" + rev + "'");
+                }
+                case Refs(_): {
+                    io.eprint("fatal: " + error.to_str());
+                }
+                case Object(_): {
+                    io.eprint("fatal: " + error.to_str());
+                }
+            }
+            return 128;
+        }
+    }
+    int total = lines.size();
+    List<bool> wanted = [];
+    for (int index in 0 .. total) {
+        wanted.push(!opts.has("L"));
+    }
+    if (opts.has("L")) {
+        Ranges ranges = parse_ranges(opts.all("L"), total);
+        if (!ranges.is_ok) {
+            return 128;
+        }
+        for (int index in 0 .. ranges.from.size()) {
+            for (int line in ranges.from[index] .. ranges.to[index] + 1) {
+                wanted[line - 1] = true;
+            }
+        }
+    }
+    // the commits involved, once each
+    List<str> commits = [];
+    List<Who> people = [];
+    for (int index in 0 .. total) {
+        if (wanted[index] && lines[index].commit != "" && !commits.contains(lines[index].commit)) {
+            commits.push(lines[index].commit);
+            people.push(who_of(context.gitdir, lines[index].commit, lines[index].path));
+        }
+    }
+    bytes out = [];
+    if (opts.flag("porcelain") || opts.flag("line-porcelain")) {
+        out = porcelain(lines, wanted, commits, people, opts.flag("line-porcelain"));
+        GIT_gitwrite.put_bytes(out);
+        return 0;
+    }
+    // the plain format
+    int width = GIT_gitcommon.default_abbrev(context);
+    if (opts.has("abbrev")) {
+        width = opts.value("abbrev", "").parse_int().or(width);
+    }
+    width = width + 1;
+    if (opts.flag("l")) {
+        width = GIT_object.hex_length(context.gitdir);
+    }
+    if (is_annotate) {
+        width = 8;
+    }
+    bool is_email = opts.flag("show-email");
+    str date_style = opts.value("date", "iso");
+    int author_width = 0;
+    int file_width = 0;
+    int number_width = 1;
+    int final_width = digits_of(total);
+    bool is_name = opts.flag("show-name");
+    for (int index in 0 .. total) {
+        if (!wanted[index] || lines[index].commit == "") {
+            continue;
+        }
+        Who who = people[commits.index_of(lines[index].commit).or(0)];
+        str shown = who.name;
+        if (is_email) {
+            shown = "<" + who.email + ">";
+        }
+        if (shown.chars().size() > author_width) {
+            author_width = shown.chars().size();
+        }
+        if (lines[index].path.size() > file_width) {
+            file_width = lines[index].path.size();
+        }
+        if (digits_of(lines[index].orig_line) > number_width) {
+            number_width = digits_of(lines[index].orig_line);
+        }
+        if (lines[index].path != rooted) {
+            is_name = true;
+        }
+    }
+    for (int index in 0 .. total) {
+        if (!wanted[index]) {
+            continue;
+        }
+        GIT_blame.Line line = lines[index];
+        Who who = people[commits.index_of(line.commit).or(0)];
+        str hash = "";
+        bool is_boundary = line.is_boundary && !opts.flag("root");
+        if (is_annotate) {
+            hash = line.commit.substr(0, width);
+        } else if (is_boundary) {
+            if (opts.flag("b")) {
+                hash = pad_right("", width);
+            } else {
+                hash = "^" + line.commit.substr(0, width - 1);
+            }
+        } else {
+            hash = line.commit.substr(0, width);
+        }
+        str when = GIT_gitcommon.format_date(who.when, offset_of(who.zone), date_style);
+        if (opts.flag("t")) {
+            when = who.when.to_str() + " " + who.zone;
+        }
+        str shown = who.name;
+        if (is_email) {
+            shown = "<" + who.email + ">";
+        }
+        str text = text_of(line.text);
+        if (is_annotate) {
+            out.extend((hash + "\t(" + pad_right(shown, author_width) + "\t" + when + "\t" + pad_left((index + 1).to_str(), final_width) + ")").to_bytes());
+            put_line(out, line.text);
+            continue;
+        }
+        str head = hash;
+        if (is_name) {
+            head = head + " " + pad_right(line.path, file_width);
+        }
+        if (opts.flag("show-number")) {
+            head = head + " " + pad_left(line.orig_line.to_str(), number_width);
+        }
+        if (opts.flag("s")) {
+            head = head + " " + pad_left((index + 1).to_str(), final_width) + ") ";
+        } else {
+            head = head + " (" + pad_right(shown, author_width) + " " + when + " " + pad_left((index + 1).to_str(), final_width) + ") ";
+        }
+        out.extend(head.to_bytes());
+        put_line(out, line.text);
+    }
+    GIT_gitwrite.put_bytes(out);
+    return 0;
+}
+
+/// A line of the file, ended with a newline even if it had none.
+void put_line(bytes out, bytes text) {
+    out.extend(text);
+    if (text.size() == 0 || text[text.size() - 1] != '\n') {
+        out.push('\n');
+    }
+}
+
+int offset_of(str zone) {
+    if (zone.size() != 5) {
+        return 0;
+    }
+    int hours = zone.substr(1, 3).parse_int().or(0);
+    int minutes = zone.substr(3, 5).parse_int().or(0);
+    int total = hours * 60 + minutes;
+    if (zone.starts_with("-")) {
+        return 0 - total;
+    }
+    return total;
+}
+
+bytes porcelain(List<GIT_blame.Line> lines, List<bool> wanted, List<str> commits, List<Who> people, bool is_every_line) {
+    bytes out = [];
+    List<str> seen = [];
+    int total = lines.size();
+    int index = 0;
+    while (index < total) {
+        if (!wanted[index]) {
+            index = index + 1;
+            continue;
+        }
+        GIT_blame.Line line = lines[index];
+        // a group: the next lines come from the same commit and continue its line numbers
+        int count = 1;
+        while (index + count < total && wanted[index + count] && lines[index + count].commit == line.commit && lines[index + count].orig_line == line.orig_line + count) {
+            count = count + 1;
+        }
+        Who who = people[commits.index_of(line.commit).or(0)];
+        for (int step in 0 .. count) {
+            GIT_blame.Line one = lines[index + step];
+            str head = one.commit + " " + one.orig_line.to_str() + " " + (index + step + 1).to_str();
+            if (step == 0) {
+                head = head + " " + count.to_str();
+            }
+            out.extend((head + "\n").to_bytes());
+            if (is_every_line || !seen.contains(one.commit)) {
+                out.extend(("author " + who.name + "\nauthor-mail <" + who.email + ">\nauthor-time " + who.when.to_str() + "\nauthor-tz " + who.zone + "\ncommitter " + who.committer_name + "\ncommitter-mail <" + who.committer_email + ">\ncommitter-time " + who.committer_when.to_str() + "\ncommitter-tz " + who.committer_zone + "\nsummary " + who.summary + "\n").to_bytes());
+                if (one.is_boundary) {
+                    out.extend("boundary\n".to_bytes());
+                }
+                if (who.parent != "") {
+                    out.extend(("previous " + who.parent + " " + one.path + "\n").to_bytes());
+                }
+                out.extend(("filename " + one.path + "\n").to_bytes());
+                seen.push(one.commit);
+            }
+            out.push('\t');
+            put_line(out, one.text);
+        }
+        index = index + count;
+    }
+    return out;
+}
